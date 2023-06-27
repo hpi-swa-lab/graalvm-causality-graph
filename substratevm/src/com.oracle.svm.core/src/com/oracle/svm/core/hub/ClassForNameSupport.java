@@ -27,6 +27,7 @@ package com.oracle.svm.core.hub;
 import static com.oracle.svm.core.MissingRegistrationUtils.throwMissingRegistrationErrors;
 
 import java.util.Objects;
+import java.util.stream.StreamSupport;
 
 import org.graalvm.collections.EconomicMap;
 import org.graalvm.nativeimage.ImageSingletons;
@@ -233,5 +234,9 @@ public final class ClassForNameSupport {
     public boolean canUnsafeInstantiateAsInstance(DynamicHub hub) {
         var conditionSet = unsafeInstantiatedClasses.get(DynamicHub.toClass(hub));
         return conditionSet != null && conditionSet.satisfied();
+    }
+
+    public static Class<?>[] getSuccessfullyRegisteredClasses() {
+        return StreamSupport.stream(singleton().knownClasses.getValues().spliterator(), false).map(ConditionalRuntimeValue::getValue).filter(o -> o instanceof Class<?>).toArray(Class<?>[]::new);
     }
 }
