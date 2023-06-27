@@ -28,6 +28,7 @@ import static com.oracle.svm.core.MissingRegistrationUtils.throwMissingRegistrat
 
 import java.util.EnumSet;
 import java.util.Objects;
+import java.util.stream.StreamSupport;
 
 import org.graalvm.collections.EconomicMap;
 import org.graalvm.nativeimage.ImageSingletons;
@@ -259,5 +260,9 @@ public final class ClassForNameSupport implements MultiLayeredImageSingleton, Un
     @Override
     public EnumSet<LayeredImageSingletonBuilderFlags> getImageBuilderFlags() {
         return LayeredImageSingletonBuilderFlags.ALL_ACCESS;
+    }
+
+    public static Class<?>[] getSuccessfullyRegisteredClasses() {
+        return StreamSupport.stream(singleton().knownClasses.getValues().spliterator(), false).map(ConditionalRuntimeValue::getValue).filter(o -> o instanceof Class<?>).toArray(Class<?>[]::new);
     }
 }
