@@ -634,6 +634,12 @@ public class SubstrateOptions {
                     "docs/reference-manual/native-image/assets/build-artifacts-schema-v0.9.0.json", type = OptionType.User)//
     public static final HostedOptionKey<Boolean> GenerateBuildArtifactsFile = new HostedOptionKey<>(false);
 
+    @Option(help = "Create text files containing all reachable types and methods, respectively")
+    public static final HostedOptionKey<Boolean> GenerateFlatReachability = new HostedOptionKey<>(false);
+
+    @Option(help = "Path pointing to a file with a newline-separated list of methods whose implementation should be ripped out.")
+    public static final HostedOptionKey<String> EviscerateMethodsPath = new HostedOptionKey<>(null);
+
     /*
      * Build output options.
      */
