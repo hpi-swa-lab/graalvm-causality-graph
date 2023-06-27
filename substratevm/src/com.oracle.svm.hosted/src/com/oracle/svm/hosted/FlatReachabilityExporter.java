@@ -34,6 +34,7 @@ import com.oracle.svm.core.feature.AutomaticallyRegisteredFeature;
 import com.oracle.svm.core.feature.InternalFeature;
 import com.oracle.svm.core.option.HostedOptionValues;
 
+import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -67,8 +68,8 @@ public class FlatReachabilityExporter implements InternalFeature {
         FeatureImpl.AfterAnalysisAccessImpl accessImpl = (FeatureImpl.AfterAnalysisAccessImpl) access;
 
         try (
-                FileWriter reachableTypes = new FileWriter(reachableTypesPath.toFile());
-                FileWriter instantiatedTypes = new FileWriter(instantiatedTypesPath.toFile())
+                BufferedWriter reachableTypes = new BufferedWriter(new FileWriter(reachableTypesPath.toFile()));
+                BufferedWriter instantiatedTypes = new BufferedWriter(new FileWriter(instantiatedTypesPath.toFile()))
         ) {
             ArrayList<AnalysisType> types = new ArrayList<>(accessImpl.getUniverse().getTypes());
             types.sort(Comparator.comparing(CausalityExport::stableTypeName));
@@ -76,11 +77,11 @@ public class FlatReachabilityExporter implements InternalFeature {
             for (AnalysisType t : types) {
                 if (t.isReachable()) {
                     reachableTypes.write(CausalityExport.stableTypeName(t));
-                    reachableTypes.write('\n');
+                    reachableTypes.newLine();
                 }
                 if (t.isInstantiated()) {
                     instantiatedTypes.write(CausalityExport.stableTypeName(t));
-                    instantiatedTypes.write('\n');
+                    instantiatedTypes.newLine();
                 }
             }
         } catch (IOException e) {
@@ -89,7 +90,7 @@ public class FlatReachabilityExporter implements InternalFeature {
         BuildArtifacts.singleton().add(ArtifactType.BUILD_INFO, reachableTypesPath);
         BuildArtifacts.singleton().add(ArtifactType.BUILD_INFO, instantiatedTypesPath);
 
-        try (FileWriter methods = new FileWriter(reachableMethodsPath.toFile())) {
+        try (BufferedWriter methods = new BufferedWriter(new FileWriter(reachableMethodsPath.toFile()))) {
             Stream<String> names = accessImpl
                     .getUniverse()
                     .getMethods()
@@ -100,7 +101,7 @@ public class FlatReachabilityExporter implements InternalFeature {
 
             for(String name : (Iterable<String>) names::iterator) {
                 methods.write(name);
-                methods.write('\n');
+                methods.newLine();
             }
         } catch (IOException e) {
             throw new RuntimeException(e);
