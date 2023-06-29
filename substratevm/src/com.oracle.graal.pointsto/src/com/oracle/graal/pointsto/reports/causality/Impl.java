@@ -80,7 +80,7 @@ public class Impl extends CausalityExport {
         if(callingMethod == null && invocation.getTargetMethod().getContextInsensitiveVirtualInvoke(invocation.getCallerMultiMethodKey()) != invocation)
             throw new RuntimeException("CausalityExport has made an invalid assumption!");
 
-        CausalityExport.Event callerEvent = callingMethod != null ? new CausalityExport.MethodReachable(callingMethod) : new RootMethodRegistration(invocation.getTargetMethod());
+        CausalityExport.Event callerEvent = callingMethod != null ? new CausalityExport.MethodCode(callingMethod) : new RootMethodRegistration(invocation.getTargetMethod());
 
         registerEdge(
                 callerEvent,
@@ -108,7 +108,7 @@ public class Impl extends CausalityExport {
     public Event getHeapObjectCreator(Object heapObject, ObjectScanner.ScanReason reason) {
         Object responsible = HeapAssignmentTracing.getInstance().getResponsibleClass(heapObject);
         if(responsible == null && reason instanceof ObjectScanner.EmbeddedRootScan ers) {
-            return new MethodReachable(ers.getMethod());
+            return new MethodCode(ers.getMethod());
         }
         return getEventForHeapReason(responsible, heapObject);
     }
@@ -196,6 +196,12 @@ public class Impl extends CausalityExport {
         for (Event e : events) {
             if (e != null && !e.unused() && e.root()) {
                 g.directEdges.add(new Graph.DirectEdge(null, e));
+            }
+        }
+
+        for (AnalysisMethod m : bb.getUniverse().getMethods()) {
+            if (m.isReachable()) {
+                g.directEdges.add(new Graph.DirectEdge(new MethodReachable(m), new MethodCode(m)));
             }
         }
 
