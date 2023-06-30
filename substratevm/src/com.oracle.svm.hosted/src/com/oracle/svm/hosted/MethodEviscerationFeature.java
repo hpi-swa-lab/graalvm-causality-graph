@@ -85,7 +85,7 @@ public class MethodEviscerationFeature implements InternalFeature {
         }
     }
 
-    private static class EvisceratedMethod extends CustomSubstitutionMethod {
+    public static class EvisceratedMethod extends CustomSubstitutionMethod {
         public EvisceratedMethod(ResolvedJavaMethod original) {
             super(original);
         }
