@@ -227,7 +227,7 @@ public class InlineBeforeAnalysisGraphDecoder<S extends InlineBeforeAnalysisPoli
         }
         Object reason = graph.currentNodeSourcePosition() != null ? graph.currentNodeSourcePosition() : graph.method();
 
-        CausalityExport.get().registerEdge(new CausalityExport.MethodReachable((AnalysisMethod) graph.method()), new CausalityExport.MethodReachable((AnalysisMethod) invokeData.callTarget.targetMethod()));
+        CausalityExport.get().registerEdge(new CausalityExport.MethodReachable((AnalysisMethod) callerScope.method), new CausalityExport.MethodReachable((AnalysisMethod) invokeData.callTarget.targetMethod()));
         ((AnalysisMethod) invokeData.callTarget.targetMethod()).registerAsInlined(reason);
 
         super.finishInlining(inlineScope);
