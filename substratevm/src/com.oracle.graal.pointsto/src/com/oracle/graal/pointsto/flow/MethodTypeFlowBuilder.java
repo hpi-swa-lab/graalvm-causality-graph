@@ -92,8 +92,9 @@ import org.graalvm.compiler.nodes.java.StoreFieldNode;
 import org.graalvm.compiler.nodes.java.StoreIndexedNode;
 import org.graalvm.compiler.nodes.java.UnsafeCompareAndExchangeNode;
 import org.graalvm.compiler.nodes.java.UnsafeCompareAndSwapNode;
+import org.graalvm.compiler.nodes.spi.LimitedValueProxy;
+import org.graalvm.compiler.nodes.spi.ValueProxy;
 import org.graalvm.compiler.nodes.type.StampTool;
-import org.graalvm.compiler.nodes.util.GraphUtil;
 import org.graalvm.compiler.nodes.virtual.AllocatedObjectNode;
 import org.graalvm.compiler.nodes.virtual.CommitAllocationNode;
 import org.graalvm.compiler.nodes.virtual.VirtualInstanceNode;
@@ -109,7 +110,6 @@ import org.graalvm.compiler.replacements.nodes.MacroInvokable;
 import org.graalvm.compiler.replacements.nodes.ObjectClone;
 import org.graalvm.compiler.replacements.nodes.UnaryMathIntrinsicNode;
 import org.graalvm.compiler.virtual.phases.ea.PartialEscapePhase;
-import org.graalvm.compiler.word.WordCastNode;
 import org.graalvm.nativeimage.AnnotationAccess;
 
 import com.oracle.graal.pointsto.AbstractAnalysisEngine;
@@ -148,6 +148,7 @@ import jdk.vm.ci.meta.Constant;
 import jdk.vm.ci.meta.JavaConstant;
 import jdk.vm.ci.meta.JavaKind;
 import jdk.vm.ci.meta.JavaType;
+import jdk.vm.ci.meta.ResolvedJavaMethod;
 import jdk.vm.ci.meta.VMConstant;
 
 public class MethodTypeFlowBuilder {
@@ -310,10 +311,11 @@ public class MethodTypeFlowBuilder {
 
             } else if (n instanceof ConstantNode) {
                 ConstantNode cn = (ConstantNode) n;
-                if (cn.hasUsages() && cn.isJavaConstant() && cn.asJavaConstant().getJavaKind() == JavaKind.Object && cn.asJavaConstant().isNonNull()) {
+                JavaConstant root = cn.asJavaConstant();
+                if (cn.hasUsages() && cn.isJavaConstant() && root.getJavaKind() == JavaKind.Object && root.isNonNull()) {
                     assert StampTool.isExactType(cn);
                     AnalysisType type = (AnalysisType) StampTool.typeOrNull(cn, bb.getMetaAccess());
-                    type.registerAsInHeap(AbstractAnalysisEngine.sourcePosition(cn));
+                    type.registerAsInHeap(new EmbeddedRootScan(AbstractAnalysisEngine.sourcePosition(cn), root));
                     if (registerEmbeddedRoots && !ignoreConstant(bb, cn)) {
                         registerEmbeddedRoot(bb, cn);
                     }
@@ -334,13 +336,13 @@ public class MethodTypeFlowBuilder {
 
             } else if (n instanceof ForeignCall) {
                 ForeignCall node = (ForeignCall) n;
-                registerForeignCall(bb, providers.getForeignCalls(), node.getDescriptor());
+                registerForeignCall(bb, providers.getForeignCalls(), node.getDescriptor(), graph.method());
             } else if (n instanceof UnaryMathIntrinsicNode) {
                 UnaryMathIntrinsicNode node = (UnaryMathIntrinsicNode) n;
-                registerForeignCall(bb, providers.getForeignCalls(), providers.getForeignCalls().getDescriptor(node.getOperation().foreignCallSignature));
+                registerForeignCall(bb, providers.getForeignCalls(), providers.getForeignCalls().getDescriptor(node.getOperation().foreignCallSignature), graph.method());
             } else if (n instanceof BinaryMathIntrinsicNode) {
                 BinaryMathIntrinsicNode node = (BinaryMathIntrinsicNode) n;
-                registerForeignCall(bb, providers.getForeignCalls(), providers.getForeignCalls().getDescriptor(node.getOperation().foreignCallSignature));
+                registerForeignCall(bb, providers.getForeignCalls(), providers.getForeignCalls().getDescriptor(node.getOperation().foreignCallSignature), graph.method());
             }
         }
     }
@@ -410,9 +412,9 @@ public class MethodTypeFlowBuilder {
         }
     }
 
-    private static void registerForeignCall(PointsToAnalysis bb, ForeignCallsProvider foreignCallsProvider, ForeignCallDescriptor foreignCallDescriptor) {
+    private static void registerForeignCall(PointsToAnalysis bb, ForeignCallsProvider foreignCallsProvider, ForeignCallDescriptor foreignCallDescriptor, ResolvedJavaMethod from) {
         Optional<AnalysisMethod> targetMethod = bb.getHostVM().handleForeignCall(foreignCallDescriptor, foreignCallsProvider);
-        targetMethod.ifPresent(analysisMethod -> bb.addRootMethod(analysisMethod, true));
+        targetMethod.ifPresent(analysisMethod -> bb.addRootMethod(analysisMethod, true, from));
     }
 
     private boolean handleNodeIntrinsic() {
@@ -440,13 +442,27 @@ public class MethodTypeFlowBuilder {
         return false;
     }
 
+    private void insertAllInstantiatedTypesReturn() {
+        AnalysisError.guarantee(flowsGraph.getReturnFlow() == null, "Expected null return flow");
+
+        AnalysisType returnType = TypeFlow.filterUncheckedInterface((AnalysisType) method.getSignature().getReturnType(method.getDeclaringClass()));
+        AnalysisError.guarantee(returnType.getJavaKind().isObject(), "Unexpected return type: %s", returnType);
+
+        BytecodePosition position = AbstractAnalysisEngine.syntheticSourcePosition(null, method);
+        var returnFlow = new FormalReturnTypeFlow(position, returnType);
+        flowsGraph.setReturnFlow(returnFlow);
+
+        assert returnType.equals(returnFlow.getDeclaredType());
+        returnType.getTypeFlow(bb, true).addUse(bb, returnFlow);
+    }
+
     /**
      * Placeholder flows are placed in the graph for any missing flows.
      */
     private void insertPlaceholderParamAndReturnFlows() {
         boolean isStatic = Modifier.isStatic(method.getModifiers());
         JavaType[] paramTypes = method.getSignature().toParameterTypes(isStatic ? null : method.getDeclaringClass());
-        BytecodePosition position = new BytecodePosition(null, method, 0);
+        BytecodePosition position = AbstractAnalysisEngine.syntheticSourcePosition(null, method);
         for (int index = 0; index < paramTypes.length; index++) {
             if (flowsGraph.getParameter(index) == null) {
                 if (paramTypes[index].getJavaKind().isObject()) {
@@ -567,13 +583,32 @@ public class MethodTypeFlowBuilder {
         postInitFlows = typeFlowGraphBuilder.build();
     }
 
+    /**
+     * Within typeflow graphs we unproxify values and instead filter types via our typeflows. Note
+     * that we also must unproxify {@link LimitedValueProxy}s, as opposed to merely
+     * {@link ValueProxy}s, as it is necessary to see through DeoptProxies. The precautionary
+     * measures needed for DeoptProxies are accounted for via method linking.
+     */
+    protected ValueNode typeFlowUnproxify(ValueNode value) {
+        ValueNode result = value;
+        while (result instanceof LimitedValueProxy) {
+            result = ((LimitedValueProxy) result).getOriginalNode();
+        }
+        return result;
+    }
+
     protected void apply(boolean forceReparse, Object reason) {
         assert !processed : "can only call apply once per MethodTypeFlowBuilder";
         processed = true;
 
         // assert method.getAnnotation(Fold.class) == null : method;
         if (handleNodeIntrinsic()) {
+            assert !method.getReturnsAllInstantiatedTypes() : method;
             return;
+        }
+
+        if (method.getReturnsAllInstantiatedTypes()) {
+            insertAllInstantiatedTypesReturn();
         }
 
         boolean insertPlaceholderFlows = bb.getHostVM().getMultiMethodAnalysisPolicy().insertPlaceholderParamAndReturnFlows(method.getMultiMethodKey());
@@ -623,13 +658,13 @@ public class MethodTypeFlowBuilder {
         }
 
         public boolean contains(ValueNode node) {
-            return flows.containsKey(GraphUtil.unproxify(node));
+            return flows.containsKey(typeFlowUnproxify(node));
         }
 
         public TypeFlowBuilder<?> lookup(ValueNode n) {
             assert n.stamp(NodeView.DEFAULT) instanceof ObjectStamp;
 
-            ValueNode node = GraphUtil.unproxify(n);
+            ValueNode node = typeFlowUnproxify(n);
             TypeFlowBuilder<?> result = flows.get(node);
             if (result == null) {
                 /*
@@ -653,7 +688,7 @@ public class MethodTypeFlowBuilder {
                 } else {
                     /*
                      * Use a type state which consists of all allocated types (which are compatible
-                     * to the node's type). Is is a conservative assumption.
+                     * to the node's type). This is a conservative assumption.
                      */
                     result = TypeFlowBuilder.create(bb, node, TypeFlow.class, () -> {
                         TypeFlow<?> proxy = bb.analysisPolicy().proxy(AbstractAnalysisEngine.sourcePosition(node), stampType.getTypeFlow(bb, true));
@@ -669,12 +704,12 @@ public class MethodTypeFlowBuilder {
 
         public void add(ValueNode node, TypeFlowBuilder<?> flow) {
             assert !contains(node);
-            flows.put(GraphUtil.unproxify(node), flow);
+            flows.put(typeFlowUnproxify(node), flow);
         }
 
         public void update(ValueNode node, TypeFlowBuilder<?> flow) {
             assert contains(node);
-            flows.put(GraphUtil.unproxify(node), flow);
+            flows.put(typeFlowUnproxify(node), flow);
         }
 
         @Override
@@ -921,10 +956,16 @@ public class MethodTypeFlowBuilder {
                 handleCondition(node, node.condition(), !node.isNegated());
 
             } else if (n instanceof ReturnNode) {
-                ReturnNode node = (ReturnNode) n;
-                TypeFlowBuilder<?> returnFlowBuilder = uniqueReturnFlowBuilder(node);
-                if (node.result() != null && node.result().getStackKind() == JavaKind.Object) {
-                    returnFlowBuilder.addUseDependency(state.lookup(node.result()));
+                /*
+                 * Return type flows within the graph do not need to be linked when all instantiated
+                 * types are returned.
+                 */
+                if (!method.getReturnsAllInstantiatedTypes()) {
+                    ReturnNode node = (ReturnNode) n;
+                    if (node.result() != null && node.result().getStackKind() == JavaKind.Object) {
+                        TypeFlowBuilder<?> returnFlowBuilder = uniqueReturnFlowBuilder(node);
+                        returnFlowBuilder.addUseDependency(state.lookup(node.result()));
+                    }
                 }
             } else if (n instanceof CommitAllocationNode) {
                 processCommitAllocation((CommitAllocationNode) n, state);
@@ -1407,7 +1448,7 @@ public class MethodTypeFlowBuilder {
     protected void processMacroInvokable(TypeFlowsOfNodes state, MacroInvokable macro, boolean installResult) {
         ValueNode macroNode = macro.asNode();
         BytecodePosition invokePosition = getInvokePosition(macro, macroNode);
-        processMethodInvocation(state, macroNode, macro.getInvokeKind(), (PointsToAnalysisMethod) macro.getTargetMethod(), macro.getArguments(), installResult, invokePosition);
+        processMethodInvocation(state, macroNode, macro.getInvokeKind(), (PointsToAnalysisMethod) macro.getTargetMethod(), macro.getArguments(), installResult, invokePosition, false);
     }
 
     /* Reconstruct the macro node invoke position, avoiding cycles in the parsing backtrace. */
@@ -1432,7 +1473,7 @@ public class MethodTypeFlowBuilder {
     protected void processMethodInvocation(TypeFlowsOfNodes state, Invoke invoke, InvokeKind invokeKind, PointsToAnalysisMethod targetMethod, NodeInputList<ValueNode> arguments) {
         FixedNode invokeNode = invoke.asFixedNode();
         BytecodePosition invokePosition = getInvokePosition(invokeNode);
-        processMethodInvocation(state, invokeNode, invokeKind, targetMethod, arguments, true, invokePosition);
+        processMethodInvocation(state, invokeNode, invokeKind, targetMethod, arguments, true, invokePosition, false);
     }
 
     /* Get a reasonable position for inlined invokes, avoiding cycles in the parsing backtrace. */
@@ -1462,8 +1503,9 @@ public class MethodTypeFlowBuilder {
         return invokePosition;
     }
 
-    protected void processMethodInvocation(TypeFlowsOfNodes state, ValueNode invoke, InvokeKind invokeKind, PointsToAnalysisMethod targetMethod, NodeInputList<ValueNode> arguments,
-                    boolean installResult, BytecodePosition invokeLocation) {
+    protected void processMethodInvocation(TypeFlowsOfNodes state, ValueNode invoke, InvokeKind invokeKind, PointsToAnalysisMethod targetMethod,
+                    NodeInputList<ValueNode> arguments,
+                    boolean installResult, BytecodePosition invokeLocation, boolean createDeoptInvokeTypeFlow) {
         // check if the call is allowed
         bb.isCallAllowed(bb, method, targetMethod, invokeLocation);
 
@@ -1471,7 +1513,6 @@ public class MethodTypeFlowBuilder {
          * Collect the parameters builders into an array so that we don't capture the `state`
          * reference in the closure.
          */
-        boolean targetIsStatic = Modifier.isStatic(targetMethod.getModifiers());
 
         TypeFlowBuilder<?>[] actualParametersBuilders = new TypeFlowBuilder<?>[arguments.size()];
         for (int i = 0; i < actualParametersBuilders.length; i++) {
@@ -1503,24 +1544,38 @@ public class MethodTypeFlowBuilder {
              */
             ActualReturnTypeFlow actualReturn = null;
 
-            /* Infer the receiver type. Insert a filter for the receiver type flow if necessary. */
-            AnalysisType receiverType = getReceiverType(invokeKind, targetMethod, arguments, invokeLocation, actualParameters);
+            AnalysisType receiverType = null;
+            if (invokeKind.hasReceiver()) {
+                receiverType = targetMethod.getDeclaringClass();
+                AnalysisType receiverArgType = (AnalysisType) StampTool.typeOrNull(arguments.get(0));
+                if (receiverArgType != null && receiverType.isAssignableFrom(receiverArgType)) {
+                    /*
+                     * If the stamp of the receiver argument is a subtype of the declared type, then
+                     * adjust the receiver type to be more precise.
+                     */
+                    receiverType = receiverArgType;
+                }
+            }
 
             MultiMethod.MultiMethodKey multiMethodKey = method.getMultiMethodKey();
             InvokeTypeFlow invokeFlow;
-            switch (invokeKind) {
-                case Static:
-                    invokeFlow = bb.analysisPolicy().createStaticInvokeTypeFlow(invokeLocation, receiverType, targetMethod, actualParameters, actualReturn, multiMethodKey);
-                    break;
-                case Special:
-                    invokeFlow = bb.analysisPolicy().createSpecialInvokeTypeFlow(invokeLocation, receiverType, targetMethod, actualParameters, actualReturn, multiMethodKey);
-                    break;
-                case Virtual:
-                case Interface:
-                    invokeFlow = bb.analysisPolicy().createVirtualInvokeTypeFlow(invokeLocation, receiverType, targetMethod, actualParameters, actualReturn, multiMethodKey);
-                    break;
-                default:
-                    throw shouldNotReachHere();
+            if (createDeoptInvokeTypeFlow) {
+                invokeFlow = bb.analysisPolicy().createDeoptInvokeTypeFlow(invokeLocation, receiverType, targetMethod, actualParameters, actualReturn, multiMethodKey);
+            } else {
+                switch (invokeKind) {
+                    case Static:
+                        invokeFlow = bb.analysisPolicy().createStaticInvokeTypeFlow(invokeLocation, receiverType, targetMethod, actualParameters, actualReturn, multiMethodKey);
+                        break;
+                    case Special:
+                        invokeFlow = bb.analysisPolicy().createSpecialInvokeTypeFlow(invokeLocation, receiverType, targetMethod, actualParameters, actualReturn, multiMethodKey);
+                        break;
+                    case Virtual:
+                    case Interface:
+                        invokeFlow = bb.analysisPolicy().createVirtualInvokeTypeFlow(invokeLocation, receiverType, targetMethod, actualParameters, actualReturn, multiMethodKey);
+                        break;
+                    default:
+                        throw shouldNotReachHere();
+                }
             }
 
             flowsGraph.addInvoke(StaticAnalysisResultsBuilder.uniqueKey(invoke), invokeFlow);
@@ -1541,7 +1596,7 @@ public class MethodTypeFlowBuilder {
             return invokeFlow;
         });
 
-        if (invoke.asNode().getStackKind() == JavaKind.Object) {
+        if (!createDeoptInvokeTypeFlow && invoke.asNode().getStackKind() == JavaKind.Object) {
             /* Create the actual return builder. */
             AnalysisType returnType = (AnalysisType) targetMethod.getSignature().getReturnType(null);
             TypeFlowBuilder<?> actualReturnBuilder = TypeFlowBuilder.create(bb, invoke.asNode(), ActualReturnTypeFlow.class, () -> {
@@ -1552,7 +1607,7 @@ public class MethodTypeFlowBuilder {
                  * Only set the actual return in the invoke when it is materialized, i.e., it is
                  * used by other flows.
                  */
-                invokeFlow.setActualReturn(bb, targetIsStatic, actualReturn);
+                invokeFlow.setActualReturn(bb, targetMethod.isStatic(), actualReturn);
                 actualReturn.setInvokeFlow(invokeFlow);
                 return actualReturn;
             });
@@ -1591,41 +1646,6 @@ public class MethodTypeFlowBuilder {
 
         /* Invokes must not be removed. */
         typeFlowGraphBuilder.registerSinkBuilder(invokeBuilder);
-    }
-
-    /**
-     * Infer the receiver type by first checking the stamp of the first argument. If that's less
-     * precise than the declaring type of the target method then return the declaring type, but also
-     * insert a filter for the formal receiver type flow.
-     * <p>
-     * If the receiver flow comes from a {@link WordCastNode} without a precise stamp then it is an
-     * {@code AllInstantiatedTypeFlow<Object>} since there's no more concrete type information. In
-     * this case the declaring class of the target method is more precise.
-     * <p>
-     * Strengthening the receiver type avoids triggering invoke-type-flow updates for incompatible
-     * types. For virtual invokes it would just lead to failed method resolutions, but for special
-     * invokes it would lead to linking the callee even if the declaring type (or a type assignable
-     * from it) is not present.
-     */
-    private AnalysisType getReceiverType(InvokeKind invokeKind, PointsToAnalysisMethod targetMethod, NodeInputList<ValueNode> arguments,
-                    BytecodePosition invokeLocation, TypeFlow<?>[] actualParameters) {
-        if (invokeKind.hasReceiver()) {
-            AnalysisType declaringType = targetMethod.getDeclaringClass();
-            /* Unproxify the receiver node to match the behaviour in TypeFlowsOfNodes.lookup() */
-            ValueNode receiverNode = GraphUtil.unproxify(arguments.get(0));
-            AnalysisType receiverStampType = (AnalysisType) StampTool.typeOrNull(receiverNode, bb.getMetaAccess());
-            if (receiverStampType == null || !receiverStampType.equals(declaringType) && receiverStampType.isAssignableFrom(declaringType)) {
-                /* The argument stamp type is less precise. Filter with the declaring type. */
-                FilterTypeFlow receiverFilter = new FilterTypeFlow(invokeLocation, declaringType, false, true, true);
-                flowsGraph.addMiscEntryFlow(receiverFilter);
-                actualParameters[0].addUse(bb, receiverFilter);
-                actualParameters[0] = receiverFilter;
-                return declaringType;
-            } else {
-                return receiverStampType;
-            }
-        }
-        return null;
     }
 
     protected void processCommitAllocation(CommitAllocationNode commitAllocationNode, TypeFlowsOfNodes state) {
