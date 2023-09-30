@@ -1696,8 +1696,8 @@ bool add_clinit_hook(jvmtiEnv* jvmti_env, const unsigned char* src_start, jint s
             continue;
         const auto* code1 = reinterpret_cast<const Code_attribute_1*>(&*code1it);
 
-        bool insert_clinit_callback = name == "<clinit>";
-        bool insert_init_callback = name == "<init>" && cp[cp[file2->this_class]->name_index]->str() == "java/lang/Object";
+        bool insert_clinit_callback = false && name == "<clinit>";
+        bool insert_init_callback = false; //name == "<init>" && cp[cp[file2->this_class]->name_index]->str() == "java/lang/Object";
 
 #if LOG
         if(insert_clinit_callback)
@@ -1723,11 +1723,13 @@ bool add_clinit_hook(jvmtiEnv* jvmti_env, const unsigned char* src_start, jint s
         if(insert_threadstart_callback)
             insertions.push_back({ .data = call_onThreadStart_code, .pos = 0 });
 
+        /*
         for(const Instruction& i : *code1)
         {
             if(i.op == OpCode::aastore)
                 insertions.push_back({ .data = call_onArrayWrite_code, .pos = (size_t)(&i + 1 - code1->code) });
         }
+         */
 
         if(insertions.empty())
             continue;
@@ -1739,6 +1741,7 @@ bool add_clinit_hook(jvmtiEnv* jvmti_env, const unsigned char* src_start, jint s
 
         modified = true;
 
+        /*
         {
             // Replace aastore in target code
             auto dst_m = reinterpret_cast<method_or_field_info*>(dst);
@@ -1760,6 +1763,7 @@ bool add_clinit_hook(jvmtiEnv* jvmti_env, const unsigned char* src_start, jint s
                 }
             }
         }
+         */
 
         dst += bytes_copied;
         src = (const uint8_t*)&m + m.len();

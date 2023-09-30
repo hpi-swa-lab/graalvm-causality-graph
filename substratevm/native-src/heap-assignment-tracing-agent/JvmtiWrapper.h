@@ -25,7 +25,10 @@ public:
 static inline void throw_on_error(jvmtiError code)
 {
     if(code != JVMTI_ERROR_NONE)
+    {
+        std::cerr << "JVMTI_ERROR: " << code << std::endl;
         throw JvmtiException(code);
+    }
 }
 
 template<typename T>
@@ -119,6 +122,18 @@ struct FieldName
     }
 };
 
+struct MethodName
+{
+    JvmtiString name, signature, generic;
+
+    static MethodName get(jvmtiEnv* jvmti_env, jmethodID method)
+    {
+        char *_name, *_signature, *_generic;
+        throw_on_error(jvmti_env->GetMethodName(method, &_name, &_signature, &_generic));
+        return {{jvmti_env, _name}, {jvmti_env, _signature}, {jvmti_env, _generic}};
+    }
+};
+
 struct ClassSignature
 {
     JvmtiString signature, generic;
@@ -131,14 +146,6 @@ struct ClassSignature
     }
 };
 
-
-template<typename ...TArgs>
-void call_with_exception_handling(jvmtiEnv* jvmti_env, jvmtiError (jvmtiEnv::* memberfunc)(TArgs...), TArgs... args)
-{
-    jvmtiError code = std::invoke(memberfunc, jvmti_env, args...);
-    if(code != JVMTI_ERROR_NONE)
-        throw JvmtiException(code);
-}
 
 template<typename TReturn>
 static inline TReturn swallow_cpp_exception_and_throw_java(jvmtiEnv* jvmti_env, std::invocable<const char*, const char*> auto&& thrower, std::invocable<> auto&& lambda)
