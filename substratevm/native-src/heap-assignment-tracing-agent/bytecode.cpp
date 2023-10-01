@@ -1696,7 +1696,7 @@ bool add_clinit_hook(jvmtiEnv* jvmti_env, const unsigned char* src_start, jint s
             continue;
         const auto* code1 = reinterpret_cast<const Code_attribute_1*>(&*code1it);
 
-        bool insert_clinit_callback = false && name == "<clinit>";
+        bool insert_clinit_callback = name == "<clinit>";
         bool insert_init_callback = false; //name == "<init>" && cp[cp[file2->this_class]->name_index]->str() == "java/lang/Object";
 
 #if LOG
