@@ -68,6 +68,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import com.oracle.graal.pointsto.reports.AnalysisReportsOptions;
 import org.graalvm.nativeimage.Platform;
 import org.graalvm.nativeimage.ProcessProperties;
 
@@ -271,6 +272,12 @@ public class NativeImage {
 
     final String oHInspectServerContentPath = oH(PointstoOptions.InspectServerContentPath);
     final String oHDeadlockWatchdogInterval = oH(SubstrateOptions.DeadlockWatchdogInterval);
+
+    final String oHEnableHeapAssignmentTracingAgent = oH + "+" + AnalysisReportsOptions.HeapAssignmentTracingAgent.getName();
+    final String oHDisableHeapAssignmentTracingAgent = oH + "-" + AnalysisReportsOptions.HeapAssignmentTracingAgent.getName();
+    final String oHDisableHeapAssignmentTracingAgentBreakpoints = oH + "-" + AnalysisReportsOptions.HeapAssignmentTracingAgentUseBreakpoints.getName();
+    final String oHDisableHeapAssignmentTracingAgentInstrumentation = oH + "-" + AnalysisReportsOptions.HeapAssignmentTracingAgentUseInstrumentation.getName();
+    final String oHPrintCausalityGraph = oH + "+" + AnalysisReportsOptions.PrintCausalityGraph.getName();
 
     final Map<String, String> imageBuilderEnvironment = new HashMap<>();
     private final ArrayList<String> imageBuilderArgs = new ArrayList<>();
@@ -1136,7 +1143,7 @@ public class NativeImage {
          * only allow inlining when JIT compiling after n invocations. PROFILE_GWT is used to
          * profile "guard with test" method handles and speculate on a constant guard value, making
          * the other branch statically unreachable for JIT compilation.
-         * 
+         *
          * Both are used for example in the implementation of record hashCode/equals methods. We
          * disable this behavior in the image builder because for AOT compilation, profiling and
          * speculation are never useful. Instead, it prevents optimizing the method handles for AOT
@@ -1419,6 +1426,22 @@ public class NativeImage {
                 agentOptions += ",";
             }
             agentOptions += getAgentOptions(traceObjectInstantiationOpts, "o");
+        }
+
+        boolean heapAssignmentTracingAgentManuallyActivated = imageBuilderArgs.stream().anyMatch(arg -> arg.startsWith(oHEnableHeapAssignmentTracingAgent));
+        boolean heapAssignmentTracingAgentManuallyDeactivated = imageBuilderArgs.stream().anyMatch(arg -> arg.startsWith(oHDisableHeapAssignmentTracingAgent) && !arg.startsWith(oHDisableHeapAssignmentTracingAgentInstrumentation) && !arg.startsWith(oHDisableHeapAssignmentTracingAgentBreakpoints));
+        boolean causalityExportActivated = imageBuilderArgs.stream().anyMatch(arg -> arg.startsWith(oHPrintCausalityGraph));
+
+        if(heapAssignmentTracingAgentManuallyActivated || (!heapAssignmentTracingAgentManuallyDeactivated && causalityExportActivated)) {
+            boolean useBreakpoints = imageBuilderArgs.stream().noneMatch(arg -> arg.startsWith(oHDisableHeapAssignmentTracingAgentBreakpoints));
+            boolean useInstrumentation = imageBuilderArgs.stream().noneMatch(arg -> arg.startsWith(oHDisableHeapAssignmentTracingAgentInstrumentation));
+
+            String arg = "-agentlib:heap-assignment-tracing-agent=";
+            if (useBreakpoints)
+                arg += "breakpoints,";
+            if (useInstrumentation)
+                arg += "instrumentation,";
+            args.add(arg);
         }
 
         if (!agentOptions.isEmpty()) {

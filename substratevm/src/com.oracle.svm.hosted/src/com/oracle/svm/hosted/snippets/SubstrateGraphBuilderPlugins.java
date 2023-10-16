@@ -204,10 +204,47 @@ public class SubstrateGraphBuilderPlugins {
         registerSizeOfPlugins(plugins);
         registerReferencePlugins(plugins, parsingReason);
         registerReferenceAccessPlugins(plugins);
+
+        // Such that ClassInitializationTracing.onClinitStart() does not appear in every run-time <clinit>
+        registerHeapAssignmentTracingHooksIgnorationPlugin(plugins);
+
         if (supportsStubBasedPlugins) {
             registerAESPlugins(plugins, replacements, architecture);
             registerArraysSupportPlugins(plugins, replacements, architecture);
         }
+    }
+
+    public static void registerHeapAssignmentTracingHooksIgnorationPlugin(InvocationPlugins plugins) {
+        Registration r = new Registration(plugins, "HeapAssignmentTracingHooks");
+
+        r.register(new RequiredInvocationPlugin("onInitStart", Object.class) {
+            @Override
+            public boolean apply(GraphBuilderContext b, ResolvedJavaMethod targetMethod, Receiver receiver, ValueNode instance) {
+                return true;
+            }
+        });
+
+        r.register(new RequiredInvocationPlugin("onClinitStart") {
+            @Override
+            public boolean apply(GraphBuilderContext b, ResolvedJavaMethod targetMethod, Receiver receiver) {
+                return true;
+            }
+        });
+
+        r.register(new RequiredInvocationPlugin("onArrayWrite", Object[].class, int.class, Object.class) {
+            @Override
+            public boolean apply(GraphBuilderContext b, ResolvedJavaMethod targetMethod, Receiver receiver, ValueNode arr, ValueNode index, ValueNode val) {
+                b.add(new StoreIndexedNode(arr, index, null, null, JavaKind.Object, val));
+                return true;
+            }
+        });
+
+        r.register(new RequiredInvocationPlugin("onThreadStart", Thread.class) {
+            @Override
+            public boolean apply(GraphBuilderContext b, ResolvedJavaMethod targetMethod, Receiver receiver, ValueNode newThread) {
+                return true;
+            }
+        });
     }
 
     private static void registerSerializationPlugins(ImageClassLoader loader, InvocationPlugins plugins, ParsingReason reason) {
