@@ -1663,20 +1663,10 @@ bool add_clinit_hook(jvmtiEnv* jvmti_env, const unsigned char* src_start, jint s
     // Insert NOPS behind aastore and then replace it using the newly gained space
     uint8_t call_onArrayWrite_code[4] = { 0 };
 
-    uint8_t call_onInitStart_code[4];
-    call_onInitStart_code[0] = static_cast<uint8_t>(OpCode::aload_0);
-    call_onInitStart_code[1] = static_cast<uint8_t>(OpCode::invokestatic);
-    *(u2*)&call_onInitStart_code[2] = onInitStart.index;
-
     uint8_t call_onClinitStart_code[4];
     call_onClinitStart_code[0] = static_cast<uint8_t>(OpCode::invokestatic);
     *(u2*)&call_onClinitStart_code[1] = onClinitStart.index;
     call_onClinitStart_code[3] = static_cast<uint8_t>(OpCode::nop); // Padding
-
-    uint8_t call_onThreadStart_code[4];
-    call_onThreadStart_code[0] = (uint8_t)OpCode::aload_0;
-    call_onThreadStart_code[1] = (uint8_t)OpCode::invokestatic;
-    *(u2*)&call_onThreadStart_code[2] = onThreadStart.index;
 
     auto src = (const uint8_t*)file2;
     bool modified = false;
@@ -1697,7 +1687,7 @@ bool add_clinit_hook(jvmtiEnv* jvmti_env, const unsigned char* src_start, jint s
         const auto* code1 = reinterpret_cast<const Code_attribute_1*>(&*code1it);
 
         bool insert_clinit_callback = name == "<clinit>";
-        bool insert_init_callback = name == "<init>" && cp[cp[file2->this_class]->name_index]->str() == "java/lang/Object";
+        bool insert_array_callback = true;
 
 #if LOG
         if(insert_clinit_callback)
@@ -1706,27 +1696,19 @@ bool add_clinit_hook(jvmtiEnv* jvmti_env, const unsigned char* src_start, jint s
         }
 #endif
 
-        bool insert_threadstart_callback =
-                name == "start"
-                //&& cp[m.descriptor_index]->str() == "()V"
-                && cp[cp[file2->this_class]->name_index]->str() == "java/lang/Thread";
-
 
         vector<Insertion> insertions;
-
-        if(insert_init_callback)
-            insertions.push_back({ .data = call_onInitStart_code, .pos = 0 });
 
         if(insert_clinit_callback)
             insertions.push_back({ .data = call_onClinitStart_code, .pos = 0 });
 
-        if(insert_threadstart_callback)
-            insertions.push_back({ .data = call_onThreadStart_code, .pos = 0 });
-
-        for(const Instruction& i : *code1)
+        if(insert_array_callback)
         {
-            if(i.op == OpCode::aastore)
-                insertions.push_back({ .data = call_onArrayWrite_code, .pos = (size_t)(&i + 1 - code1->code) });
+            for(const Instruction& i : *code1)
+            {
+                if(i.op == OpCode::aastore)
+                    insertions.push_back({ .data = call_onArrayWrite_code, .pos = (size_t)(&i + 1 - code1->code) });
+            }
         }
 
         if(insertions.empty())
@@ -1739,6 +1721,7 @@ bool add_clinit_hook(jvmtiEnv* jvmti_env, const unsigned char* src_start, jint s
 
         modified = true;
 
+        if(insert_array_callback)
         {
             // Replace aastore in target code
             auto dst_m = reinterpret_cast<method_or_field_info*>(dst);

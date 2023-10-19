@@ -1,7 +1,5 @@
 public final class HeapAssignmentTracingHooks
 {
-    public static native void onInitStart(Object instance);
-
     public static native void onClinitStart();
 
     private static native void notifyArrayWrite(Object[] arr, int index, Object val);
@@ -11,6 +9,4 @@ public final class HeapAssignmentTracingHooks
         notifyArrayWrite(arr, index, val);
         arr[index] = val;
     }
-
-    public static native void onThreadStart(java.lang.Thread newThread);
 }

@@ -961,17 +961,6 @@ static void JNICALL setObjectArrayElement(JNIEnv *env, jobjectArray array, jsize
 
 static void JNICALL onVMInit(jvmtiEnv *jvmti_env, JNIEnv* jni_env, jthread thread)
 {
-    {
-        /*
-         * Ensure onInitStart is linked:
-         * If it was not linked prior to being installed as a hook, the VM crashes in an endless recursion,
-         * trying to resolve the method, which causes the construction of new objects...
-         */
-        jclass hookClass = jni_env->FindClass(HOOK_CLASS_NAME);
-        jmethodID onInitStart = jni_env->GetStaticMethodID(hookClass, "onInitStart", "(Ljava/lang/Object;)V");
-        jni_env->CallStaticVoidMethod(hookClass, onInitStart, nullptr);
-    }
-
     acquire_jvmti_and_wrap_exceptions([&](){
         if(breakpoints_enable)
         {
@@ -1213,18 +1202,6 @@ static void record_allocation(jvmtiEnv* jvmti_env, jthread thread, jobject newIn
         ObjectTag::set(jvmti_env, newInstance, ObjectTag(cause));
 }
 
-extern "C" JNIEXPORT void JNICALL Java_HeapAssignmentTracingHooks_onInitStart(JNIEnv* env, jobject self, jobject instance)
-{
-    if (!instance) // Happens during our first invocation that ensures linkage
-        return;
-
-    acquire_jvmti_and_wrap_exceptions([&](jvmtiEnv* jvmti_env) {
-        jthread thread;
-        check(jvmti_env->GetCurrentThread(&thread));
-        record_allocation(jvmti_env, thread, instance);
-    });
-}
-
 extern "C" JNIEXPORT void JNICALL Java_HeapAssignmentTracingHooks_onClinitStart(JNIEnv* env, jobject self)
 {
     acquire_jvmti_and_wrap_exceptions([&](jvmtiEnv* jvmti_env){
@@ -1290,36 +1267,6 @@ static void JNICALL onVMObjectAlloc(
 extern "C" JNIEXPORT void JNICALL Java_HeapAssignmentTracingHooks_notifyArrayWrite(JNIEnv* env, jobject self, jobjectArray arr, jint index, jobject val)
 {
     logArrayWrite(env, arr, index, val);
-}
-
-extern "C" JNIEXPORT void JNICALL Java_HeapAssignmentTracingHooks_onThreadStart(JNIEnv* env, jobject self, jthread newThread)
-{
-#if LOG || PRINT_CLINIT_HEAP_WRITES
-    acquire_jvmti_and_wrap_exceptions([&]()
-    {
-        jvmtiPhase phase;
-        check(jvmti_env->GetPhase(&phase));
-
-        if(phase != JVMTI_PHASE_LIVE)
-            return;
-
-        jthread thread;
-        check(jvmti_env->GetCurrentThread(&thread));
-
-        AgentThreadContext* tc = AgentThreadContext::from_thread(jvmti_env, thread);
-
-        if(tc->clinit_empty())
-            return;
-
-        char outer_clinit_name[1024];
-        get_class_name(jvmti_env, tc->clinit_top(), outer_clinit_name);
-
-        jvmtiThreadInfo _info;
-        check(jvmti_env->GetThreadInfo(newThread, &_info));
-
-        cerr << outer_clinit_name << ": " << "Thread.start(): \"" << _info.name << "\"\n";
-    });
-#endif
 }
 
 extern "C" JNIEXPORT jobject JNICALL Java_com_oracle_graal_pointsto_reports_causality_HeapAssignmentTracing_00024NativeImpl_getResponsibleClass(JNIEnv* env, jobject thisClass, jobject imageHeapObject)
