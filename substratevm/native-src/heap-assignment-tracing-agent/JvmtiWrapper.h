@@ -119,6 +119,18 @@ struct FieldName
     }
 };
 
+struct MethodName
+{
+    JvmtiString name, signature, generic;
+
+    static MethodName get(jvmtiEnv* jvmti_env, jmethodID method)
+    {
+        char *_name, *_signature, *_generic;
+        throw_on_error(jvmti_env->GetMethodName(method, &_name, &_signature, &_generic));
+        return {{jvmti_env, _name}, {jvmti_env, _signature}, {jvmti_env, _generic}};
+    }
+};
+
 struct ClassSignature
 {
     JvmtiString signature, generic;
@@ -156,12 +168,12 @@ static inline TReturn swallow_cpp_exception_and_throw_java(jvmtiEnv* jvmti_env, 
         if(res == JVMTI_ERROR_NONE)
         {
             snprintf(msg, sizeof(msg), "JVMTI ERROR %u: %s", e.code(), error_name);
-            jvmti_env->Deallocate(reinterpret_cast<unsigned char*>(error_name));
         }
         else
         {
             snprintf(msg, sizeof(msg), "JVMTI ERROR %u", e.code());
         }
+        jvmti_env->Deallocate(reinterpret_cast<unsigned char*>(error_name));
         thrower("java/lang/Error", msg);
     } catch(const std::exception& e) {
         thrower("java/lang/Error", e.what());

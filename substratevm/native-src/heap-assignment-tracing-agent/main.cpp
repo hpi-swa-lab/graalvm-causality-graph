@@ -92,6 +92,13 @@ static void JNICALL onVMObjectAlloc(
         jclass object_klass,
         jlong size);
 
+static void JNICALL onBreakpoint(
+        jvmtiEnv *jvmti_env,
+        JNIEnv* jni_env,
+        jthread thread,
+        jmethodID method,
+        jlocation location);
+
 
 class AgentThreadContext
 {
@@ -614,13 +621,19 @@ ObjectContext* ObjectContext::create(jvmtiEnv* jvmti_env, JNIEnv* env, jobject o
 static bool breakpoints_enable = false;
 static bool instrumentation_enable = false;
 
+static void set_debugging_for_own_thread(jvmtiEnv* jvmti_env, jthread thread, bool enable)
+{
+    check(jvmti_env->SetEventNotificationMode(enable ? JVMTI_ENABLE : JVMTI_DISABLE, JVMTI_EVENT_FIELD_MODIFICATION, thread));
+    check(jvmti_env->SetEventNotificationMode(enable ? JVMTI_ENABLE : JVMTI_DISABLE, JVMTI_EVENT_BREAKPOINT, thread));
+}
+
 static void addToTracingStack(jvmtiEnv* jvmti_env, JNIEnv* env, jthread thread, jobject reason)
 {
     AgentThreadContext* tc = AgentThreadContext::from_thread(jvmti_env, thread);
 
     if(breakpoints_enable && !tc->reason(true))
     {
-        check(jvmti_env->SetEventNotificationMode(JVMTI_ENABLE, JVMTI_EVENT_FIELD_MODIFICATION, thread));
+        set_debugging_for_own_thread(jvmti_env, thread, true);
     }
 
 #if LOG || PRINT_CLINIT_HEAP_WRITES
@@ -667,7 +680,7 @@ static void removeFromTracingStack(jvmtiEnv* jvmti_env, JNIEnv* env, jthread thr
 
     if(breakpoints_enable && !tc->reason(true))
     {
-        check(jvmti_env->SetEventNotificationMode(JVMTI_DISABLE, JVMTI_EVENT_FIELD_MODIFICATION, thread));
+        set_debugging_for_own_thread(jvmti_env, thread, false);
     }
 
 #if LOG
@@ -731,13 +744,20 @@ static TReturn acquire_jvmti_and_wrap_exceptions(TFun&& lambda)
     auto jvmti_env_guard = _jvmti_env.lock();
     if(!jvmti_env_guard)
         return TReturn();
-    auto jvmti_env = jvmti_env_guard->jvmti_env();auto thrower = [&](const char* classname, const char* message) {
+    auto jvmti_env = jvmti_env_guard->jvmti_env();
+    auto thrower = [&](const char* classname, const char* message) {
         JNIEnv* env = jvmti_env_guard->jni_env();
         if(!env) {
             std::cerr << "Fatal error: " << message << std::endl;
             exit(1);
         }
-        env->ThrowNew(env->FindClass(classname), message);
+        jclass exception_class = env->FindClass(classname);
+        if(!exception_class)
+        {
+            std::cerr << "Fatal error: Couldn't find exception class " << classname << std::endl;
+            exit(1);
+        }
+        env->ThrowNew(exception_class, message);
     };
     return swallow_cpp_exception_and_throw_java<TReturn>(jvmti_env, thrower, [&]() { return lambda(jvmti_env); });
 }
@@ -833,6 +853,7 @@ JNIEXPORT jint JNICALL Agent_OnLoad(JavaVM *vm, char *options, void *reserved)
     {
         cap.can_generate_breakpoint_events = true;
         cap.can_generate_field_modification_events = true;
+        cap.can_access_local_variables = true;
     }
 
     check_code(1, env->AddCapabilities(&cap));
@@ -847,6 +868,7 @@ JNIEXPORT jint JNICALL Agent_OnLoad(JavaVM *vm, char *options, void *reserved)
     callbacks.ThreadEnd = onThreadEnd;
     callbacks.ObjectFree = onObjectFree;
     callbacks.VMObjectAlloc = onVMObjectAlloc;
+    callbacks.Breakpoint = onBreakpoint;
 
     check_code(1, env->SetEventCallbacks(&callbacks, sizeof(callbacks)));
     check_code(1, env->SetEventNotificationMode(JVMTI_ENABLE, JVMTI_EVENT_VM_INIT, nullptr));
@@ -896,6 +918,27 @@ static void processClass(jvmtiEnv* jvmti_env, jclass klass)
 #if LOG
         cerr << "SetFieldModificationWatch: " << class_signature << " . " << field_name << " (" << field_signature << ")\n";
 #endif
+    }
+
+    ClassSignature classSig = ClassSignature::get(jvmti_env, klass);
+
+    if (string_view(classSig.signature) == ("L" HOOK_CLASS_NAME ";"))
+    {
+        jint method_count;
+        jmethodID* methods;
+        check(jvmti_env->GetClassMethods(klass, &method_count, &methods));
+
+        for (auto m : span(methods, method_count))
+        {
+            MethodName methodName = MethodName::get(jvmti_env, m);
+
+            if (string_view(methodName.name) == "onArrayWrite")
+            {
+                check(jvmti_env->SetBreakpoint(m, 0));
+            }
+        }
+
+        check(jvmti_env->Deallocate(reinterpret_cast<unsigned char *>(methods)));
     }
 }
 
@@ -1264,9 +1307,20 @@ static void JNICALL onVMObjectAlloc(
     });
 }
 
-extern "C" JNIEXPORT void JNICALL Java_HeapAssignmentTracingHooks_notifyArrayWrite(JNIEnv* env, jobject self, jobjectArray arr, jint index, jobject val)
+static void JNICALL onBreakpoint(
+        jvmtiEnv *jvmti_env,
+        JNIEnv* jni_env,
+        jthread thread,
+        jmethodID method,
+        jlocation location)
 {
-    logArrayWrite(env, arr, index, val);
+    jobject arr;
+    jint index;
+    jobject val;
+    check(jvmti_env->GetLocalObject(thread, 0, 0, &arr));
+    check(jvmti_env->GetLocalInt(thread, 0, 1, &index));
+    check(jvmti_env->GetLocalObject(thread, 0, 2, &val));
+    logArrayWrite(jni_env, (jobjectArray) arr, index, val);
 }
 
 extern "C" JNIEXPORT jobject JNICALL Java_com_oracle_graal_pointsto_reports_causality_HeapAssignmentTracing_00024NativeImpl_getResponsibleClass(JNIEnv* env, jobject thisClass, jobject imageHeapObject)
@@ -1353,7 +1407,7 @@ extern "C" JNIEXPORT void JNICALL Java_com_oracle_graal_pointsto_reports_causali
             bool fieldModificationIsTracked = tc->reason(true) != nullptr;
             if(fieldModificationIsTracked != fieldModificationWasTracked)
             {
-                check(jvmti_env->SetEventNotificationMode(fieldModificationIsTracked ? JVMTI_ENABLE : JVMTI_DISABLE, JVMTI_EVENT_FIELD_MODIFICATION, thread));
+                set_debugging_for_own_thread(jvmti_env, thread, fieldModificationIsTracked);
             }
         }
     });
