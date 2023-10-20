@@ -92,13 +92,6 @@ static void JNICALL onVMObjectAlloc(
         jclass object_klass,
         jlong size);
 
-static void JNICALL onBreakpoint(
-        jvmtiEnv *jvmti_env,
-        JNIEnv* jni_env,
-        jthread thread,
-        jmethodID method,
-        jlocation location);
-
 
 class AgentThreadContext
 {
@@ -107,7 +100,7 @@ class AgentThreadContext
     bool current_cause_record_heap_assignments = false;
 
 public:
-    static AgentThreadContext* from_thread(jvmtiEnv* jvmti_env, jthread t)
+    static AgentThreadContext* from_thread(jvmtiEnv* jvmti_env, jthread t = nullptr)
     {
         AgentThreadContext* tc;
         check(jvmti_env->GetThreadLocalStorage(t, (void**)&tc));
@@ -624,7 +617,6 @@ static bool instrumentation_enable = false;
 static void set_debugging_for_own_thread(jvmtiEnv* jvmti_env, jthread thread, bool enable)
 {
     check(jvmti_env->SetEventNotificationMode(enable ? JVMTI_ENABLE : JVMTI_DISABLE, JVMTI_EVENT_FIELD_MODIFICATION, thread));
-    check(jvmti_env->SetEventNotificationMode(enable ? JVMTI_ENABLE : JVMTI_DISABLE, JVMTI_EVENT_BREAKPOINT, thread));
 }
 
 static void addToTracingStack(jvmtiEnv* jvmti_env, JNIEnv* env, jthread thread, jobject reason)
@@ -672,7 +664,7 @@ static void addToTracingStack(jvmtiEnv* jvmti_env, JNIEnv* env, jthread thread, 
 
 static void removeFromTracingStack(jvmtiEnv* jvmti_env, JNIEnv* env, jthread thread, jobject reason)
 {
-    AgentThreadContext* tc = AgentThreadContext::from_thread(jvmti_env, thread);
+    AgentThreadContext* tc = AgentThreadContext::from_thread(jvmti_env);
 
     jobject topReason = tc->clinit_top();
     assert(env->IsSameObject(topReason, reason));
@@ -851,7 +843,6 @@ JNIEXPORT jint JNICALL Agent_OnLoad(JavaVM *vm, char *options, void *reserved)
     }
     if(breakpoints_enable)
     {
-        cap.can_generate_breakpoint_events = true;
         cap.can_generate_field_modification_events = true;
         cap.can_access_local_variables = true;
     }
@@ -868,7 +859,6 @@ JNIEXPORT jint JNICALL Agent_OnLoad(JavaVM *vm, char *options, void *reserved)
     callbacks.ThreadEnd = onThreadEnd;
     callbacks.ObjectFree = onObjectFree;
     callbacks.VMObjectAlloc = onVMObjectAlloc;
-    callbacks.Breakpoint = onBreakpoint;
 
     check_code(1, env->SetEventCallbacks(&callbacks, sizeof(callbacks)));
     check_code(1, env->SetEventNotificationMode(JVMTI_ENABLE, JVMTI_EVENT_VM_INIT, nullptr));
@@ -902,12 +892,21 @@ static void processClass(jvmtiEnv* jvmti_env, jclass klass)
 
     ClassFields fields(jvmti_env, klass);
 
+    bool isHookClass;
+    {
+        ClassSignature classSig = ClassSignature::get(jvmti_env, klass);
+        isHookClass = string_view(classSig.signature) == ("L" HOOK_CLASS_NAME ";");
+    }
+
     for(auto field : fields)
     {
         FieldName fieldName = FieldName::get(jvmti_env, klass, field);
 
-        // Don't care for primitive types
-        if(fieldName.signature[0] != 'L' && fieldName.signature[0] != '[')
+        if (isHookClass && string_view(fieldName.name) == "onArrayWriteDummyField" && fieldName.signature[0] == 'B')
+        {
+            // cerr << "Instrumenting dummy field!" << endl;
+        }
+        else if (fieldName.signature[0] != 'L' && fieldName.signature[0] != '[') // Don't care for primitive types
             continue;
 
         auto return_code = jvmti_env->SetFieldModificationWatch(klass, field);
@@ -919,27 +918,6 @@ static void processClass(jvmtiEnv* jvmti_env, jclass klass)
         cerr << "SetFieldModificationWatch: " << class_signature << " . " << field_name << " (" << field_signature << ")\n";
 #endif
     }
-
-    ClassSignature classSig = ClassSignature::get(jvmti_env, klass);
-
-    if (string_view(classSig.signature) == ("L" HOOK_CLASS_NAME ";"))
-    {
-        jint method_count;
-        jmethodID* methods;
-        check(jvmti_env->GetClassMethods(klass, &method_count, &methods));
-
-        for (auto m : span(methods, method_count))
-        {
-            MethodName methodName = MethodName::get(jvmti_env, m);
-
-            if (string_view(methodName.name) == "onArrayWrite")
-            {
-                check(jvmti_env->SetBreakpoint(m, 0));
-            }
-        }
-
-        check(jvmti_env->Deallocate(reinterpret_cast<unsigned char *>(methods)));
-    }
 }
 
 static jniNativeInterface* original_jni;
@@ -948,10 +926,7 @@ static void get_class_name(jvmtiEnv *jvmti_env, jclass clazz, span<char> buffer)
 static void logArrayWrite(JNIEnv* env, jobjectArray arr, jsize index, jobject val)
 {
     acquire_jvmti_and_wrap_exceptions([&](jvmtiEnv* jvmti_env){
-        jthread thread;
-        check(jvmti_env->GetCurrentThread(&thread));
-
-        AgentThreadContext* tc = AgentThreadContext::from_thread(jvmti_env, thread);
+        AgentThreadContext* tc = AgentThreadContext::from_thread(jvmti_env);
 
         auto cause = tc->reason(true);
         if(!cause)
@@ -1125,11 +1100,23 @@ static void onFieldModification(
         char signature_type,
         jvalue new_value)
 {
+    if (signature_type == 'B' /* Must be HeapAssignmentTracingHooks.onArrayWriteDummyField */)
+    {
+        jobject arr;
+        jint index;
+        jobject val;
+        check(jvmti_env->GetLocalObject(thread, 0, 0, &arr));
+        check(jvmti_env->GetLocalInt(thread, 0, 1, &index));
+        check(jvmti_env->GetLocalObject(thread, 0, 2, &val));
+        logArrayWrite(jni_env, (jobjectArray) arr, index, val);
+        return;
+    }
+
     if(!new_value.l)
         return;
 
     acquire_jvmti_and_wrap_exceptions([&](){
-        AgentThreadContext* tc = AgentThreadContext::from_thread(jvmti_env, thread);
+        AgentThreadContext* tc = AgentThreadContext::from_thread(jvmti_env);
 
         auto cause = tc->reason(true);
         assert(cause);
@@ -1238,9 +1225,9 @@ static void JNICALL onClassFileLoad(
     });
 }
 
-static void record_allocation(jvmtiEnv* jvmti_env, jthread thread, jobject newInstance)
+static void record_allocation(jvmtiEnv* jvmti_env, jobject newInstance)
 {
-    AgentThreadContext* tc = AgentThreadContext::from_thread(jvmti_env, thread);
+    AgentThreadContext* tc = AgentThreadContext::from_thread(jvmti_env);
     if(auto cause = tc->reason(false))
         ObjectTag::set(jvmti_env, newInstance, ObjectTag(cause));
 }
@@ -1303,24 +1290,8 @@ static void JNICALL onVMObjectAlloc(
         jlong size)
 {
     acquire_jvmti_and_wrap_exceptions([&]() {
-        record_allocation(jvmti_env, thread, object);
+        record_allocation(jvmti_env, object);
     });
-}
-
-static void JNICALL onBreakpoint(
-        jvmtiEnv *jvmti_env,
-        JNIEnv* jni_env,
-        jthread thread,
-        jmethodID method,
-        jlocation location)
-{
-    jobject arr;
-    jint index;
-    jobject val;
-    check(jvmti_env->GetLocalObject(thread, 0, 0, &arr));
-    check(jvmti_env->GetLocalInt(thread, 0, 1, &index));
-    check(jvmti_env->GetLocalObject(thread, 0, 2, &val));
-    logArrayWrite(jni_env, (jobjectArray) arr, index, val);
 }
 
 extern "C" JNIEXPORT jobject JNICALL Java_com_oracle_graal_pointsto_reports_causality_HeapAssignmentTracing_00024NativeImpl_getResponsibleClass(JNIEnv* env, jobject thisClass, jobject imageHeapObject)
@@ -1396,9 +1367,7 @@ extern "C" JNIEXPORT void JNICALL Java_com_oracle_graal_pointsto_reports_causali
 {
     acquire_jvmti_and_wrap_exceptions([&](jvmtiEnv* jvmti_env)
     {
-        jthread thread;
-        check(jvmti_env->GetCurrentThread(&thread));
-        AgentThreadContext* tc = AgentThreadContext::from_thread(jvmti_env, thread);
+        AgentThreadContext* tc = AgentThreadContext::from_thread(jvmti_env);
 
         bool fieldModificationWasTracked = tc->reason(true) != nullptr;
         tc->set_current_cause(env, cause, recordHeapAssignments);
@@ -1407,6 +1376,8 @@ extern "C" JNIEXPORT void JNICALL Java_com_oracle_graal_pointsto_reports_causali
             bool fieldModificationIsTracked = tc->reason(true) != nullptr;
             if(fieldModificationIsTracked != fieldModificationWasTracked)
             {
+                jthread thread;
+                check(jvmti_env->GetCurrentThread(&thread));
                 set_debugging_for_own_thread(jvmti_env, thread, fieldModificationIsTracked);
             }
         }
