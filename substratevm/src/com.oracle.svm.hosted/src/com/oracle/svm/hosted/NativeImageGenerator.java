@@ -70,6 +70,7 @@ import org.graalvm.compiler.core.common.GraalOptions;
 import org.graalvm.compiler.core.common.spi.ForeignCallsProvider;
 import org.graalvm.compiler.core.common.spi.MetaAccessExtensionProvider;
 import org.graalvm.compiler.core.common.util.CompilationAlarm;
+import org.graalvm.compiler.core.gen.LIRCompilerBackend;
 import org.graalvm.compiler.core.riscv64.RISCV64ReflectionUtil;
 import org.graalvm.compiler.debug.DebugCloseable;
 import org.graalvm.compiler.debug.DebugContext;
@@ -160,7 +161,11 @@ import com.oracle.graal.pointsto.meta.HostedProviders;
 import com.oracle.graal.pointsto.meta.PointsToAnalysisFactory;
 import com.oracle.graal.pointsto.phases.InlineBeforeAnalysis;
 import com.oracle.graal.pointsto.reports.AnalysisReporter;
+import com.oracle.graal.pointsto.reports.AnalysisReportsOptions;
 import com.oracle.graal.pointsto.reports.ReportUtils;
+import com.oracle.graal.pointsto.reports.causality.CausalityExport;
+import com.oracle.graal.pointsto.reports.causality.events.CausalityEvent;
+import com.oracle.graal.pointsto.reports.causality.events.CausalityEvents;
 import com.oracle.graal.pointsto.typestate.DefaultAnalysisPolicy;
 import com.oracle.graal.pointsto.util.AnalysisError;
 import com.oracle.graal.pointsto.util.GraalAccess;
@@ -664,6 +669,8 @@ public class NativeImageGenerator {
 
             BeforeCompilationAccessImpl beforeCompilationConfig = new BeforeCompilationAccessImpl(featureHandler, loader, aUniverse, hUniverse, heap, debug, runtimeConfiguration, nativeLibraries);
             featureHandler.forEachFeature(feature -> feature.beforeCompilation(beforeCompilationConfig));
+
+            LIRCompilerBackend.coverageInstrumentation = NativeImageOptions.UnsafeCoverage.getValue();
 
             BuildPhaseProvider.markReadyForCompilation();
 

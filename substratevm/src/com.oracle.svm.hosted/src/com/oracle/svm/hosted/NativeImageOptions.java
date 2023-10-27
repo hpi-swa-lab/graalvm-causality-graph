@@ -223,6 +223,9 @@ public class NativeImageOptions {
     @Option(help = "Print unsafe operation offset warnings.)")//
     public static final HostedOptionKey<Boolean> UnsafeOffsetWarningsAreFatal = new HostedOptionKey<>(false);
 
+    @Option(help = "Method coverage for x86_64.")//
+    public static final HostedOptionKey<Boolean> UnsafeCoverage = new HostedOptionKey<Boolean>(false);
+
     /**
      * Inspired by HotSpot's hs_err_<pid>.log files and for build-time errors (err_b).
      *

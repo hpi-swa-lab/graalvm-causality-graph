@@ -201,6 +201,8 @@ public class LIRCompilerBackend {
 
         return lirGenRes;
     }
+    
+    public static boolean coverageInstrumentation = false;
 
     @SuppressWarnings("try")
     public static void emitCode(Backend backend,
