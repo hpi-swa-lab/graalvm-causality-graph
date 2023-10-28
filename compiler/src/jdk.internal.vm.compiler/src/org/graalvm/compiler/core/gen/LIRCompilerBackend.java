@@ -26,6 +26,7 @@ package org.graalvm.compiler.core.gen;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.function.Consumer;
 
 import org.graalvm.compiler.code.CompilationResult;
 import org.graalvm.compiler.core.LIRGenerationPhase;
@@ -201,8 +202,9 @@ public class LIRCompilerBackend {
 
         return lirGenRes;
     }
-    
-    public static boolean coverageInstrumentation = false;
+
+
+    public static Consumer<String> coverageMethodNameSink;
 
     @SuppressWarnings("try")
     public static void emitCode(Backend backend,

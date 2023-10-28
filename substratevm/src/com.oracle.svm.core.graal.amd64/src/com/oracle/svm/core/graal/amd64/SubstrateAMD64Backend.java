@@ -1085,7 +1085,7 @@ public class SubstrateAMD64Backend extends SubstrateBackend implements LIRGenera
 
     private static synchronized int assignId(String name) {
         int id = methodId++;
-        System.err.println(name);
+        LIRCompilerBackend.coverageMethodNameSink.accept(name);
         return id;
     }
 
@@ -1124,7 +1124,7 @@ public class SubstrateAMD64Backend extends SubstrateBackend implements LIRGenera
         }
 
         protected void makeFrame(CompilationResultBuilder crb, AMD64MacroAssembler asm) {
-            if (LIRCompilerBackend.coverageInstrumentation) {
+            if (LIRCompilerBackend.coverageMethodNameSink != null) {
                 if (!method.getClass().getTypeName().contains("HostedMethod")) {
                     throw new RuntimeException("Method is not HostedMethod!");
                 }
