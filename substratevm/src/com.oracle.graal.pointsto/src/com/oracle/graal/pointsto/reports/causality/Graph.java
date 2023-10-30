@@ -24,26 +24,6 @@
  */
 package com.oracle.graal.pointsto.reports.causality;
 
-import com.oracle.graal.pointsto.BigBang;
-import com.oracle.graal.pointsto.PointsToAnalysis;
-import com.oracle.graal.pointsto.flow.AccessFieldTypeFlow;
-import com.oracle.graal.pointsto.flow.AllInstantiatedTypeFlow;
-import com.oracle.graal.pointsto.flow.ArrayElementsTypeFlow;
-import com.oracle.graal.pointsto.flow.ConstantTypeFlow;
-import com.oracle.graal.pointsto.flow.FieldTypeFlow;
-import com.oracle.graal.pointsto.flow.FormalParamTypeFlow;
-import com.oracle.graal.pointsto.flow.FormalReceiverTypeFlow;
-import com.oracle.graal.pointsto.flow.NewInstanceTypeFlow;
-import com.oracle.graal.pointsto.flow.OffsetLoadTypeFlow;
-import com.oracle.graal.pointsto.flow.OffsetStoreTypeFlow;
-import com.oracle.graal.pointsto.flow.SourceTypeFlow;
-import com.oracle.graal.pointsto.flow.TypeFlow;
-import com.oracle.graal.pointsto.meta.AnalysisType;
-import com.oracle.graal.pointsto.reports.causality.events.CausalityEvent;
-import com.oracle.graal.pointsto.typestate.TypeState;
-import com.oracle.svm.util.ClassUtil;
-import org.graalvm.collections.Pair;
-
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
@@ -70,6 +50,29 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
+
+import org.graalvm.collections.Pair;
+
+import com.oracle.graal.pointsto.BigBang;
+import com.oracle.graal.pointsto.PointsToAnalysis;
+import com.oracle.graal.pointsto.flow.AccessFieldTypeFlow;
+import com.oracle.graal.pointsto.flow.AllInstantiatedTypeFlow;
+import com.oracle.graal.pointsto.flow.ArrayElementsTypeFlow;
+import com.oracle.graal.pointsto.flow.ConstantTypeFlow;
+import com.oracle.graal.pointsto.flow.FieldTypeFlow;
+import com.oracle.graal.pointsto.flow.FormalParamTypeFlow;
+import com.oracle.graal.pointsto.flow.FormalReceiverTypeFlow;
+import com.oracle.graal.pointsto.flow.NewInstanceTypeFlow;
+import com.oracle.graal.pointsto.flow.OffsetLoadTypeFlow;
+import com.oracle.graal.pointsto.flow.OffsetStoreTypeFlow;
+import com.oracle.graal.pointsto.flow.SourceTypeFlow;
+import com.oracle.graal.pointsto.flow.TypeFlow;
+import com.oracle.graal.pointsto.meta.AnalysisMetaAccess;
+import com.oracle.graal.pointsto.meta.AnalysisType;
+import com.oracle.graal.pointsto.reports.causality.events.CausalityEvent;
+import com.oracle.graal.pointsto.reports.causality.events.EventKinds;
+import com.oracle.graal.pointsto.typestate.TypeState;
+import com.oracle.svm.util.ClassUtil;
 
 class Graph {
     abstract static class Node implements Comparable<Node> {
@@ -450,7 +453,7 @@ class Graph {
         return (Stream<T>) s.filter(o -> type.isAssignableFrom(o.getClass()));
     }
 
-    public void export(PointsToAnalysis bb, ZipOutputStream zip, boolean exportTypeflowNames) throws java.io.IOException {
+    public void export(PointsToAnalysis bb, ReachabilityExport hierarchy, ZipOutputStream zip, boolean exportTypeflowNames) throws java.io.IOException {
         Map<AnalysisType, Integer> typeIdMap = makeDenseTypeIdMap(bb, bb.getAllInstantiatedTypeFlow().getState()::containsType);
         AnalysisType[] typesSorted = getRelevantTypes(bb, typeIdMap);
 
@@ -474,8 +477,14 @@ class Graph {
         zip.putNextEntry(new ZipEntry("types.txt"));
         writeTypes(zip, typesSorted);
 
-        zip.putNextEntry(new ZipEntry("methods.txt"));
-        writeMethods(bb, zip, methodsSorted);
+        zip.putNextEntry(new ZipEntry("kinds.txt"));
+        writeKinds(zip);
+
+        zip.putNextEntry(new ZipEntry("node_kinds.bin"));
+        writeMethodKinds(zip, methodsSorted);
+
+        zip.putNextEntry(new ZipEntry("node_parents.bin"));
+        writeNodeParents(zip, methodsSorted, bb.getMetaAccess(), hierarchy);
 
         zip.putNextEntry(new ZipEntry("direct_invokes.bin"));
         writeDirectEdges(zip, methodIdMap);
@@ -498,6 +507,9 @@ class Graph {
         writeTypeflowMethods(zip, flowsSorted, methodIdMap);
 
         if (exportTypeflowNames) {
+            zip.putNextEntry(new ZipEntry("methods.txt"));
+            writeMethods(bb, zip, methodsSorted);
+
             zip.putNextEntry(new ZipEntry("typeflows.txt"));
             writeTypeflows(zip, flowsSorted);
         }
@@ -510,10 +522,19 @@ class Graph {
         }
     }
 
-    private static void writeMethods(PointsToAnalysis bb, OutputStream out, CausalityEvent[] methodsSorted) {
+    private static void writeKinds(OutputStream out) {
         PrintStream w = new PrintStream(out);
+        assert EventKinds.values().length <= 0x100;
+        for (var kind : EventKinds.values()) {
+            w.println(kind.name);
+        }
+    }
+
+    private static void writeMethodKinds(OutputStream out, CausalityEvent[] methodsSorted) throws IOException {
         for (CausalityEvent method : methodsSorted) {
-            w.println(method.toString(bb.getMetaAccess()));
+            int kindIndex = method.typeDescriptor().ordinal();
+            assert kindIndex <= 0xFF;
+            out.write(kindIndex);
         }
     }
 
@@ -628,6 +649,21 @@ class Graph {
         }
     }
 
+    private static void writeNodeParents(OutputStream out, CausalityEvent[] methodsSorted, AnalysisMetaAccess metaAccess, ReachabilityExport export) throws IOException {
+        WritableByteChannel c = Channels.newChannel(out);
+        ByteBuffer b = ByteBuffer.allocate(Integer.BYTES);
+        b.order(ByteOrder.LITTLE_ENDIAN);
+
+        for (CausalityEvent node : methodsSorted) {
+            var hierarchyNode = node.getParent(export, metaAccess);
+            int parentId = hierarchyNode == null ? 0 : hierarchyNode.id;
+            b.putInt(parentId);
+            b.flip();
+            c.write(b);
+            b.flip();
+        }
+    }
+
     private static void writeTypeflowMethods(OutputStream out, FlowNode[] flowsSorted, HashMap<CausalityEvent, Integer> methodIdMap) throws IOException {
         WritableByteChannel c = Channels.newChannel(out);
         ByteBuffer b = ByteBuffer.allocate(Integer.BYTES);
@@ -644,6 +680,13 @@ class Graph {
             b.flip();
             c.write(b);
             b.flip();
+        }
+    }
+
+    private static void writeMethods(PointsToAnalysis bb, OutputStream out, CausalityEvent[] methodsSorted) {
+        PrintStream w = new PrintStream(out);
+        for (CausalityEvent method : methodsSorted) {
+            w.println(method.toString(bb.getMetaAccess()));
         }
     }
 

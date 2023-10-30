@@ -24,6 +24,19 @@
  */
 package com.oracle.graal.pointsto.reports.causality;
 
+import java.util.ArrayDeque;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Deque;
+import java.util.HashSet;
+import java.util.IdentityHashMap;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
+
 import com.oracle.graal.pointsto.BigBang;
 import com.oracle.graal.pointsto.ObjectScanner;
 import com.oracle.graal.pointsto.PointsToAnalysis;
@@ -41,20 +54,8 @@ import com.oracle.graal.pointsto.reports.causality.events.CausalityEvents;
 import com.oracle.graal.pointsto.reports.causality.events.Feature;
 import com.oracle.graal.pointsto.reports.causality.events.InlinedMethodCode;
 import com.oracle.graal.pointsto.util.AnalysisError;
-import jdk.vm.ci.meta.JavaConstant;
 
-import java.util.ArrayDeque;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.Deque;
-import java.util.HashSet;
-import java.util.IdentityHashMap;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Consumer;
-import java.util.function.Supplier;
-import java.util.stream.Collectors;
+import jdk.vm.ci.meta.JavaConstant;
 
 class BasicImpl<TContext extends BasicImpl.ThreadContext> extends CausalityImplementation {
     private final ConcurrentHashMap<Graph.DirectEdge, Boolean> directEdges = new ConcurrentHashMap<>();
@@ -301,7 +302,7 @@ class BasicImpl<TContext extends BasicImpl.ThreadContext> extends CausalityImple
         var hyperEdges = this.hyperEdges.keySet();
 
         directEdges.removeIf(pair -> pair.from != null && pair.from.unused() || pair.to.unused());
-        directEdges.removeIf(pair -> pair.to instanceof com.oracle.graal.pointsto.reports.causality.events.MethodReachable mr && mr.element.isClassInitializer());
+        directEdges.removeIf(pair -> pair.to instanceof com.oracle.graal.pointsto.reports.causality.events.MethodReachable mr && mr.method.isClassInitializer());
 
         HashSet<CausalityEvent> rootEvents = new HashSet<>();
         Set<com.oracle.graal.pointsto.reports.causality.events.BuildTimeClassInitialization> initialBuildTimeClinits = new HashSet<>();
