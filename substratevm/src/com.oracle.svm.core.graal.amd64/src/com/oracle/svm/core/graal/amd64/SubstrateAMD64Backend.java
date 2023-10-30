@@ -69,7 +69,6 @@ import org.graalvm.compiler.core.common.spi.ForeignCallLinkage;
 import org.graalvm.compiler.core.common.spi.LIRKindTool;
 import org.graalvm.compiler.core.common.type.CompressibleConstant;
 import org.graalvm.compiler.core.gen.DebugInfoBuilder;
-import org.graalvm.compiler.core.gen.LIRCompilerBackend;
 import org.graalvm.compiler.core.gen.LIRGenerationProvider;
 import org.graalvm.compiler.core.gen.NodeLIRBuilder;
 import org.graalvm.compiler.debug.DebugContext;
@@ -1081,14 +1080,6 @@ public class SubstrateAMD64Backend extends SubstrateBackend implements LIRGenera
         }
     }
 
-    private static int methodId = 0;
-
-    private static synchronized int assignId(String name) {
-        int id = methodId++;
-        LIRCompilerBackend.coverageMethodNameSink.accept(name);
-        return id;
-    }
-
     protected static class SubstrateAMD64FrameContext implements FrameContext {
 
         protected final SharedMethod method;
@@ -1124,19 +1115,6 @@ public class SubstrateAMD64Backend extends SubstrateBackend implements LIRGenera
         }
 
         protected void makeFrame(CompilationResultBuilder crb, AMD64MacroAssembler asm) {
-            if (LIRCompilerBackend.coverageMethodNameSink != null) {
-                if (!method.getClass().getTypeName().contains("HostedMethod")) {
-                    throw new RuntimeException("Method is not HostedMethod!");
-                }
-
-                String name = method.format("%H.%n(%P):%R");
-                int id = assignId(name);
-                asm.emitByte(0xcc);
-                for (int i = 0; i < 3; i++) {
-                    asm.emitByte(id >>> (i * 8));
-                }
-            }
-
             emitEndBranch(crb);
             reserveStackFrame(crb, asm);
         }
