@@ -1,5 +1,15 @@
 package com.oracle.svm.hosted;
 
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.Optional;
+import java.util.stream.Stream;
+
+import org.graalvm.nativeimage.ImageSingletons;
+
 import com.oracle.graal.pointsto.meta.AnalysisMethod;
 import com.oracle.graal.pointsto.meta.AnalysisType;
 import com.oracle.svm.core.BuildArtifacts;
@@ -11,20 +21,12 @@ import com.oracle.svm.core.hub.ClassForNameSupport;
 import com.oracle.svm.core.option.HostedOptionValues;
 import com.oracle.svm.hosted.jni.JNIAccessFeature;
 import com.oracle.svm.hosted.reflect.ReflectionHostedSupport;
+
 import jdk.vm.ci.meta.JavaField;
 import jdk.vm.ci.meta.JavaMethod;
 import jdk.vm.ci.meta.JavaType;
 import jdk.vm.ci.meta.MetaUtil;
 import jdk.vm.ci.meta.Signature;
-import org.graalvm.nativeimage.ImageSingletons;
-
-import java.io.BufferedWriter;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.nio.file.Path;
-import java.util.Arrays;
-import java.util.Optional;
-import java.util.stream.Stream;
 
 @AutomaticallyRegisteredFeature
 @SuppressWarnings("unused")
@@ -57,6 +59,16 @@ public class FlatReachabilityExporter implements InternalFeature {
             .generatedFiles(HostedOptionValues.singleton())
             .resolve("jni_methods.txt");
 
+    public final Path codeSizePath = NativeImageGenerator
+            .generatedFiles(HostedOptionValues.singleton())
+            .resolve("code_size.txt");
+    public final Path heapSizePath = NativeImageGenerator
+            .generatedFiles(HostedOptionValues.singleton())
+            .resolve("heap_size.txt");
+    public final Path fileSizePath = NativeImageGenerator
+            .generatedFiles(HostedOptionValues.singleton())
+            .resolve("file_size.txt");
+
     @Override
     public boolean isInConfiguration(IsInConfigurationAccess access) {
         return SubstrateOptions.GenerateFlatReachability.getValue();
@@ -68,6 +80,13 @@ public class FlatReachabilityExporter implements InternalFeature {
                 writer.write(line);
                 writer.newLine();
             }
+        }
+        BuildArtifacts.singleton().add(ArtifactType.BUILD_INFO, path);
+    }
+
+    private static void write(Path path, String line) throws IOException {
+        try (var writer = new FileWriter(path.toFile())) {
+            writer.write(line);
         }
         BuildArtifacts.singleton().add(ArtifactType.BUILD_INFO, path);
     }
@@ -122,6 +141,36 @@ public class FlatReachabilityExporter implements InternalFeature {
                             .filter(AnalysisMethod::isReachable)
                             .map(FlatReachabilityExporter::stableMethodName)
                             .sorted());
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public void afterCompilation(AfterCompilationAccess access) {
+        var impl = (FeatureImpl.AfterCompilationAccessImpl) access;
+        int size = impl.getCodeCache().getCodeAreaSize();
+
+        try {
+            writeList(codeSizePath, Stream.of(String.valueOf(size)));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public void beforeImageWrite(BeforeImageWriteAccess access) {
+        var impl = (FeatureImpl.BeforeImageWriteAccessImpl) access;
+        var image = impl.image;
+
+        int codeSize = image.getCodeCache().getCodeAreaSize();
+        long heapSize = image.getImageHeapSize();
+        int totalSize = image.getImageFileSize();
+
+        try {
+            write(codeSizePath, String.valueOf(codeSize));
+            write(heapSizePath, String.valueOf(heapSize));
+            write(fileSizePath, String.valueOf(totalSize));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
