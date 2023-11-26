@@ -58,10 +58,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 import java.util.stream.Stream;
 
-import com.oracle.graal.pointsto.reports.AnalysisReportsOptions;
-import com.oracle.graal.pointsto.reports.causality.CausalityExport;
-import com.oracle.graal.pointsto.reports.causality.events.CausalityEvent;
-import com.oracle.graal.pointsto.reports.causality.events.CausalityEvents;
 import org.graalvm.collections.EconomicMap;
 import org.graalvm.collections.EconomicSet;
 import org.graalvm.collections.MapCursor;
@@ -164,7 +160,11 @@ import com.oracle.graal.pointsto.meta.HostedProviders;
 import com.oracle.graal.pointsto.meta.PointsToAnalysisFactory;
 import com.oracle.graal.pointsto.phases.InlineBeforeAnalysis;
 import com.oracle.graal.pointsto.reports.AnalysisReporter;
+import com.oracle.graal.pointsto.reports.AnalysisReportsOptions;
 import com.oracle.graal.pointsto.reports.ReportUtils;
+import com.oracle.graal.pointsto.reports.causality.CausalityExport;
+import com.oracle.graal.pointsto.reports.causality.events.CausalityEvent;
+import com.oracle.graal.pointsto.reports.causality.events.CausalityEvents;
 import com.oracle.graal.pointsto.typestate.DefaultAnalysisPolicy;
 import com.oracle.graal.pointsto.util.AnalysisError;
 import com.oracle.graal.pointsto.util.GraalAccess;
@@ -901,9 +901,11 @@ public class NativeImageGenerator {
                 if (AnalysisReportsOptions.PrintCausalityGraph.getValue(options)) {
                     // This cannot be done in the "CausalityExporter"-Feature since Feature-registration should already
                     // be logged by CausalityExport...
-                    CausalityExport.activate(AnalysisReportsOptions.CausalityGraphWithTypeflow.getValue(options)
-                            ? CausalityExport.ActivationLevel.ENABLED
-                            : CausalityExport.ActivationLevel.ENABLED_WITHOUT_TYPEFLOW
+                    CausalityExport.activate(AnalysisReportsOptions.CausalityGraphSimple.getValue(options) ?
+                            CausalityExport.ActivationLevel.ENABLED_SIMPLE :
+                            AnalysisReportsOptions.CausalityGraphWithTypeflow.getValue(options)
+                                    ? CausalityExport.ActivationLevel.ENABLED
+                                    : CausalityExport.ActivationLevel.ENABLED_WITHOUT_TYPEFLOW
                     );
                 }
 
