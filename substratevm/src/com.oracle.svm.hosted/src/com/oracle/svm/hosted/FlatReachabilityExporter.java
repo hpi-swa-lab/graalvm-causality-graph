@@ -65,9 +65,6 @@ public class FlatReachabilityExporter implements InternalFeature {
     public final Path heapSizePath = NativeImageGenerator
             .generatedFiles(HostedOptionValues.singleton())
             .resolve("heap_size.txt");
-    public final Path fileSizePath = NativeImageGenerator
-            .generatedFiles(HostedOptionValues.singleton())
-            .resolve("file_size.txt");
 
     @Override
     public boolean isInConfiguration(IsInConfigurationAccess access) {
@@ -165,12 +162,10 @@ public class FlatReachabilityExporter implements InternalFeature {
 
         int codeSize = image.getCodeCache().getCodeAreaSize();
         long heapSize = image.getImageHeapSize();
-        int totalSize = image.getImageFileSize();
 
         try {
             write(codeSizePath, String.valueOf(codeSize));
             write(heapSizePath, String.valueOf(heapSize));
-            write(fileSizePath, String.valueOf(totalSize));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
