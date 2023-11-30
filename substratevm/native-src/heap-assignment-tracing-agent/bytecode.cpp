@@ -1,16 +1,14 @@
 #include <span>
 #include <iterator>
 #include <jni_md.h>
-#include <jvmti.h>
 #include <concepts>
 #include <limits>
-#include <unistd.h>
 #include "settings.h"
 #include <algorithm>
 #include <numeric>
-#include <iostream>
 #include <vector>
 #include <memory>
+#include "bytecode.h"
 
 using namespace std;
 
@@ -95,7 +93,8 @@ public:
             offset += insertion.data.size();
         }
 
-        assert((int64_t)(T)offset == offset && "_bci overflow!");
+        if((int64_t)(T)offset != offset)
+            throw ClassRewritingException("bci overflow!");
 
         bci_offset = offset;
     }
@@ -113,7 +112,9 @@ public:
             address += insertion.data.size();
         }
 
-        assert((int64_t)(T)address == address && "_bci overflow!");
+        if((int64_t)(T)address != address)
+            throw ClassRewritingException("bci overflow!");
+
         bci = address;
     }
 };
@@ -537,7 +538,7 @@ struct Instruction
         if(op >= OpCode::impdep1 && op <= OpCode::impdep2)
             return 1;
 
-        assert(false && "Unknown OpCode!");
+        throw ClassRewritingException("Unknown OpCode!");
     }
 
     void relocate_relative(BciShift a, size_t bci)
@@ -869,7 +870,7 @@ size_t cp_info::len() const
         case Dynamic: return sizeof(Dynamic_info);
         case InvokeDynamic: return sizeof(InvokeDynamic_info);
         default:
-            assert(false);
+            throw ClassRewritingException("Unknown cp_info tag!");
     }
 }
 
@@ -1539,7 +1540,6 @@ static size_t copy_method_with_insertions(const ConstantPoolOffsets& cp, const m
 
                     if(offset <= 64 && (frame_type < 64 - offset || frame_type >= 64 && frame_type < 128 - offset))
                     {
-                        assert(offset <= 64 && "TODO");
                         frame_type += offset;
                     }
                     else if(frame_type >= 247)
@@ -1576,7 +1576,7 @@ static size_t copy_method_with_insertions(const ConstantPoolOffsets& cp, const m
                     }
                     else
                     {
-                        assert(false && "Bad frame type");
+                        throw ClassRewritingException("Bad frame type");
                     }
                 }
             }
@@ -1623,9 +1623,7 @@ static ConstantPoolIndex<ref_info> create_method_ref(ConstantPoolAppender& cpa, 
     return cpa.append<ref_info>(Methodref, declaringClass, nameAndType_index);
 }
 
-#define SLACK_SPACE 100000
-
-bool add_clinit_hook(jvmtiEnv* jvmti_env, const unsigned char* src_start, jint src_len, unsigned char** dst_ptr, jint* dst_len_ptr)
+size_t add_clinit_hook(const unsigned char* src_start, jint src_len, unsigned char* dst_start, jint dst_len)
 {
     auto file1 = (ClassFile1*)src_start;
     ConstantPoolOffsets cp(file1);
@@ -1634,9 +1632,7 @@ bool add_clinit_hook(jvmtiEnv* jvmti_env, const unsigned char* src_start, jint s
     auto file4 = file3->continuation();
 
 
-    unsigned char* dst;
-    jvmti_env->Allocate(src_len + SLACK_SPACE, &dst);
-    unsigned char* dst_start = dst;
+    unsigned char* dst = dst_start;
 
     // Copy ClassFile1:
     auto dst_file1 = (ClassFile1*)dst;
@@ -1748,18 +1744,12 @@ bool add_clinit_hook(jvmtiEnv* jvmti_env, const unsigned char* src_start, jint s
         src = (const uint8_t*)&m + m.len();
     }
 
-    if(!modified)
+    if(modified)
     {
-        auto res = jvmti_env->Deallocate(dst_start);
-        assert(res == JVMTI_ERROR_NONE);
-    }
-    else
-    {
-        assert((dst - dst_start) <= (src_len + SLACK_SPACE));
+        assert(dst <= dst_start + dst_len);
         dst = std::copy(src, src_start + src_len, dst);
-        *dst_ptr = dst_start;
-        *dst_len_ptr = dst - dst_start;
+        return dst - dst_start;
     }
 
-    return modified;
+    return 0;
 }

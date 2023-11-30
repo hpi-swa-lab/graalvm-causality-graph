@@ -8,7 +8,7 @@ include_directories(${JNI_INCLUDE_DIRS})
 
 set(CMAKE_CXX_STANDARD 20)
 
-add_library(heap-assignment-tracing-agent SHARED main.cpp bytecode.cpp settings.h JvmtiWrapper.h)
+add_library(heap-assignment-tracing-agent SHARED main.cpp bytecode.cpp settings.h JvmtiWrapper.h bytecode.h)
 
 target_link_libraries(heap-assignment-tracing-agent -static-libgcc -static-libstdc++)
 

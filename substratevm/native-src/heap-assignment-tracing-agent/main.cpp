@@ -14,6 +14,7 @@
 #include <variant>
 
 #include "JvmtiWrapper.h"
+#include "bytecode.h"
 
 static bool check_jvmti_error(jvmtiError errorcode, const char* code, const char* filename, int line)
 {
@@ -28,8 +29,6 @@ static bool check_jvmti_error(jvmtiError errorcode, const char* code, const char
 #define check_assert(expr) if(check_jvmti_error(expr, #expr, __FILE__, __LINE__)) { exit(1); }
 
 using namespace std;
-
-bool add_clinit_hook(jvmtiEnv* jvmti_env, const unsigned char* src, jint src_len, unsigned char** dst_ptr, jint* dst_len_ptr);
 
 static void JNICALL onFieldModification(
         jvmtiEnv *jvmti_env,
@@ -1223,7 +1222,31 @@ static void JNICALL onClassFileLoad(
            || string_view(name) == "com/oracle/svm/core/jni/functions/JNIFunctionTables") // Crashes during late compile phase
             return;
 
-        add_clinit_hook(jvmti_env, class_data, class_data_len, new_class_data, new_class_data_len);
+        const size_t SLACK_SPACE = 100000;
+
+        unsigned char* dst;
+        jint dst_len = class_data_len + SLACK_SPACE;
+        auto res = jvmti_env->Allocate(dst_len, &dst);
+        assert(res == JVMTI_ERROR_NONE);
+
+        try
+        {
+            size_t bytes_written = add_clinit_hook(class_data, class_data_len, dst, dst_len);
+
+            if (bytes_written)
+            {
+                *new_class_data = dst;
+                *new_class_data_len = bytes_written;
+                return;
+            }
+        }
+        catch (const ClassRewritingException& e)
+        {
+            cerr << "HeapAssignmentTracingAgent failed to rewrite class \"" << name << "\": " << e.what() << endl;
+        }
+
+        res = jvmti_env->Deallocate(dst);
+        assert(res == JVMTI_ERROR_NONE);
     });
 }
 
