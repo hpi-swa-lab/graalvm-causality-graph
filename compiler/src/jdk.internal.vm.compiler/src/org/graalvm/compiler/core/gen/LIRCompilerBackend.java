@@ -26,6 +26,7 @@ package org.graalvm.compiler.core.gen;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.function.ToIntFunction;
 
 import org.graalvm.compiler.code.CompilationResult;
 import org.graalvm.compiler.core.LIRGenerationPhase;
@@ -202,6 +203,8 @@ public class LIRCompilerBackend {
         return lirGenRes;
     }
 
+    public static ToIntFunction<Iterable<ResolvedJavaMethod>> coverageMethodsToId;
+
     @SuppressWarnings("try")
     public static void emitCode(Backend backend,
                     Assumptions assumptions,
@@ -220,6 +223,15 @@ public class LIRCompilerBackend {
 
             FrameMap frameMap = lirGenRes.getFrameMap();
             CompilationResultBuilder crb = lirBackend.newCompilationResultBuilder(lirGenRes, frameMap, compilationResult, factory);
+
+            if (coverageMethodsToId != null) {
+                int id = coverageMethodsToId.applyAsInt(inlinedMethods);
+                crb.asm.emitByte(0xcc);
+                for (int i = 0; i < 3; i++) {
+                    crb.asm.emitByte(id >>> (i * 8));
+                }
+            }
+
             lirBackend.emitCode(crb, installedCodeOwner, entryPointDecorator);
             if (assumptions != null && !assumptions.isEmpty()) {
                 compilationResult.setAssumptions(assumptions.toArray());

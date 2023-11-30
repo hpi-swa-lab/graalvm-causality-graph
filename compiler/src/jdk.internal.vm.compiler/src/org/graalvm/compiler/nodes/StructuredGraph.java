@@ -44,6 +44,7 @@ import org.graalvm.compiler.core.common.CancellationBailoutException;
 import org.graalvm.compiler.core.common.CompilationIdentifier;
 import org.graalvm.compiler.core.common.GraalOptions;
 import org.graalvm.compiler.core.common.cfg.BlockMap;
+import org.graalvm.compiler.core.gen.LIRCompilerBackend;
 import org.graalvm.compiler.debug.DebugContext;
 import org.graalvm.compiler.debug.GraalError;
 import org.graalvm.compiler.debug.JavaMethodContext;
@@ -243,7 +244,10 @@ public final class StructuredGraph extends Graph implements JavaMethodContext {
         }
 
         public Builder recordInlinedMethods(boolean flag) {
-            this.recordInlinedMethods = flag;
+            if (LIRCompilerBackend.coverageMethodsToId == null) {
+                /* If UnsafeCoverageFeature is active, we need inlining information */
+                this.recordInlinedMethods = flag;
+            }
             return this;
         }
 
