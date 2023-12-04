@@ -113,9 +113,7 @@ final class TypeflowImpl extends BasicImpl<TypeflowImpl.ThreadContext> {
 
     @Override
     public void addVirtualInvokeTypeFlow(AbstractVirtualInvokeTypeFlow invocation) {
-        if (invocation.method() != null) {
-            originalInvokeReceivers.put(invocation, invocation.getReceiver());
-        }
+        originalInvokeReceivers.put(invocation, invocation.getReceiver());
     }
 
     protected void forEachTypeflow(Consumer<TypeFlow<?>> callback) {
