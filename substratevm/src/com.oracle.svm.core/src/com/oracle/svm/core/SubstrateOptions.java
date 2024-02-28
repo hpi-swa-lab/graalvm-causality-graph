@@ -477,6 +477,9 @@ public class SubstrateOptions {
     @Option(help = "Path pointing to a file with a newline-separated list of methods whose implementation should be ripped out.")
     public static final HostedOptionKey<String> EviscerateMethodsPath = new HostedOptionKey<>(null);
 
+    @Option(help = "Whether the implementation of eviscerated methods should throw an exception instead of just returning.")//
+    public static final HostedOptionKey<Boolean> EviscerateMethodsWithExceptions = new HostedOptionKey<>(false);
+
     /*
      * Build output options.
      */
