@@ -55,6 +55,7 @@ import com.oracle.graal.pointsto.reports.causality.events.Feature;
 import com.oracle.graal.pointsto.reports.causality.events.InlinedMethodCode;
 import com.oracle.graal.pointsto.util.AnalysisError;
 
+import jdk.vm.ci.code.BytecodePosition;
 import jdk.vm.ci.meta.JavaConstant;
 
 abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends CausalityImplementation {
@@ -173,7 +174,7 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
 
     private static CausalityEvent forScanReason(ObjectScanner.ScanReason reason) {
         if (reason instanceof ObjectScanner.EmbeddedRootScan ers) {
-            return CausalityEvents.InlinedMethodCode.create(ers.getPosition());
+            return CausalityEvents.InlinedMethodCode.create(ers.getReason() instanceof BytecodePosition pos ? pos : ers.getPosition());
         }
         if (reason instanceof ObjectScanner.FieldScan fs) {
             return CausalityEvents.FieldRead.create(fs.getField());
