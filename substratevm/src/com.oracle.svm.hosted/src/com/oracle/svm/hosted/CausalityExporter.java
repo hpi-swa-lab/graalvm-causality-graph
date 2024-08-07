@@ -67,7 +67,7 @@ public class CausalityExporter implements InternalFeature {
 
     @Override
     public void afterRegistration(AfterRegistrationAccess access) {
-        if (NativeImageOptions.ExitAfterAnalysis.getValue()) {
+        if (NativeImageOptions.ExitAfterAnalysis.getValue() || NativeImageOptions.ReturnAfterAnalysis.getValue()) {
             System.err.println("Causality Export should be run until the compiling phase in order to get code size information!");
         }
 
@@ -109,7 +109,7 @@ public class CausalityExporter implements InternalFeature {
             throw VMError.shouldNotReachHere("Failed to create Causality Export", ex);
         }
 
-        if (NativeImageOptions.ExitAfterAnalysis.getValue()) {
+        if (NativeImageOptions.ExitAfterAnalysis.getValue() || NativeImageOptions.ReturnAfterAnalysis.getValue()) {
             addReachabilityFileAndFinalize();
         }
     }
