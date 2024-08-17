@@ -36,6 +36,7 @@ public enum EventKinds {
     ConfigurationFile("Configuration File"),
     Feature("Feature"),
     FieldRead("Read"),
+    FieldIsRecomputed("Recomputed"),
     HeapObjectClass("Class-Object in Heap"),
     HeapObjectDynamicHub("DynamicHub-Object in Heap"),
     UnknownHeapObject("Unknown Heap Object"),
@@ -44,6 +45,7 @@ public enum EventKinds {
     JniCallVariantWrapper("JNI Call Variant Wrapper"),
     JniRegistration("JNI Registration"),
     MethodGraphParsed("Method Graph Parsed"),
+    MethodIsEntryPoint("Entry Point"),
     Snippet("Snippet"),
     ReachabilityCallback("Reachability Callback"),
     MethodOverrideReachableCallback("Method Override Reachable Callback"),
@@ -56,7 +58,8 @@ public enum EventKinds {
 
     AutomaticFeatureRegistration("Automatic Feature Registration"),
     UserRequestedFeatureRegistration("User-Requested Feature Registration"),
-    InitialRegistrations("Initial Registrations");
+    InitialRegistrations("Initial Registrations"),
+    StructuralProperty("Structural Property");
 
     public final String name;
     public final String suffix;

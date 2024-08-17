@@ -79,6 +79,7 @@ public final class CausalityEvents {
             this.eventConstructor = eventConstructor;
         }
 
+        @Override
         public CausalityEvent create(TData data) {
             return internedEvents.computeIfAbsent(data, eventConstructor);
         }
@@ -89,6 +90,7 @@ public final class CausalityEvents {
             super(pair -> constructor.apply(pair.getLeft(), pair.getRight()));
         }
 
+        @Override
         public CausalityEvent create(T1 arg1, T2 arg2) {
             return create(Pair.create(arg1, arg2));
         }
@@ -157,12 +159,14 @@ public final class CausalityEvents {
     }
 
     private static class DummyEventFactory<T> implements EventFactory<T> {
+        @Override
         public CausalityEvent create(T data) {
             return null;
         }
     }
 
     private static class DummyEventFactory2<T1, T2> implements EventFactory2<T1, T2> {
+        @Override
         public CausalityEvent create(T1 arg1, T2 arg2) {
             return null;
         }
@@ -210,10 +214,12 @@ public final class CausalityEvents {
     public static final EventFactory<AnalysisMethod> RootMethodRegistration = factory(RootMethodRegistration::new);
     public static final EventFactory<AnalysisMethod> VirtualMethodInvoked = factory(VirtualMethodInvoked::new);
     public static final EventFactory<AnalysisMethod> MethodGraphParsed = factory(MethodGraphParsed::new);
+    public static final EventFactory<AnalysisMethod> MethodIsEntryPoint = factory(MethodIsEntryPoint::new);
     public static final EventFactory<AnalysisType> TypeReachable = factory(TypeReachable::new);
     public static final EventFactory<AnalysisType> TypeInstantiated = factory(TypeInstantiated::new);
     public static final EventFactory<AnalysisType> TypeInHeap = factory(TypeInHeap::new);
     public static final EventFactory<AnalysisField> FieldRead = factory(FieldRead::new);
+    public static final EventFactory<AnalysisField> FieldIsRecomputed = factory(FieldIsRecomputed::new);
     public static final EventFactory<Consumer<DuringAnalysisAccess>> ReachabilityNotificationCallback = factory(ReachabilityNotificationCallback::new);
     public static final EventFactory<BiConsumer<DuringAnalysisAccess, Class<?>>> SubtypeReachableNotificationCallback = factory(SubtypeReachableNotificationCallback::new);
     public static final EventFactory<BiConsumer<DuringAnalysisAccess, Executable>> OverrideReachableNotificationCallback = factory(OverrideReachableNotificationCallback::new);
@@ -237,5 +243,6 @@ public final class CausalityEvents {
     public static final CausalityEvent AutomaticFeatureRegistration = new RootEvent(EventKinds.AutomaticFeatureRegistration);
     public static final CausalityEvent UserEnabledFeatureRegistration = new RootEvent(EventKinds.UserRequestedFeatureRegistration);
     public static final CausalityEvent InitialRegistration = new RootEvent(EventKinds.InitialRegistrations);
+    public static final CausalityEvent StructualProperty = new RootEvent(EventKinds.StructuralProperty);
     public static final CausalityEvent Ignored = new Ignored();
 }

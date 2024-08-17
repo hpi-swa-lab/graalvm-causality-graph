@@ -36,6 +36,8 @@ import org.graalvm.nativeimage.impl.CEntryPointLiteralCodePointer;
 import com.oracle.graal.pointsto.BigBang;
 import com.oracle.graal.pointsto.infrastructure.UniverseMetaAccess;
 import com.oracle.graal.pointsto.meta.AnalysisMethod;
+import com.oracle.graal.pointsto.reports.causality.CausalityExport;
+import com.oracle.graal.pointsto.reports.causality.events.CausalityEvents;
 import com.oracle.svm.core.feature.AutomaticallyRegisteredFeature;
 import com.oracle.svm.core.feature.InternalFeature;
 import com.oracle.svm.core.meta.MethodPointer;
@@ -69,7 +71,10 @@ public class CEntryPointLiteralFeature implements InternalFeature {
                     CEntryPoint annotation = aMethod.getAnnotation(CEntryPoint.class);
                     UserError.guarantee(annotation != null, "Method referenced by %s must be annotated with @%s: %s", CEntryPointLiteral.class.getSimpleName(),
                                     CEntryPoint.class.getSimpleName(), javaMethod);
-                    CEntryPointCallStubSupport.singleton().registerStubForMethod(aMethod, () -> CEntryPointData.create(aMethod));
+                    CausalityExport.registerEdge(CausalityEvents.StructualProperty, CausalityEvents.MethodIsEntryPoint.create(aMethod));
+                    try (var ignored = CausalityExport.setCause(CausalityEvents.MethodIsEntryPoint.create(aMethod))) {
+                        CEntryPointCallStubSupport.singleton().registerStubForMethod(aMethod, () -> CEntryPointData.create(aMethod));
+                    }
                 } else if (javaMethod instanceof HostedMethod) {
                     HostedMethod hMethod = (HostedMethod) javaMethod;
                     AnalysisMethod aMethod = hMethod.getWrapped();

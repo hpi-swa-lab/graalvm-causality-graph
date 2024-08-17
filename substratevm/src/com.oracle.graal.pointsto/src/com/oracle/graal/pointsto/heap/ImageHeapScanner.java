@@ -339,7 +339,9 @@ public abstract class ImageHeapScanner {
         /* Read hosted array element values only when the array is initialized. */
         array.constantData.hostedValuesReader = new AnalysisFuture<>(() -> {
             checkSealed(reason, "Trying to materialize an ImageHeapObjectArray for %s after the ImageHeapScanner is sealed.", constant);
-            type.registerAsReachable(reason);
+            try (var ignored = CausalityExport.setCause(CausalityEvents.Ignored)) { // TODO
+                type.registerAsReachable(reason);
+            }
             ScanReason arrayReason = new ArrayScan(type, array, reason);
             Object[] elementValues = new Object[length];
             for (int idx = 0; idx < length; idx++) {
@@ -630,7 +632,11 @@ public abstract class ImageHeapScanner {
             }
         }
 
-        markTypeInstantiated(objectType, reason);
+        var inHeap = CausalityEvents.TypeInHeap.create(objectType);
+        CausalityExport.registerEdgeFromHeapObject(bb, imageHeapConstant, reason, inHeap);
+        try (var ignored = CausalityExport.setCause(inHeap)) {
+            markTypeInstantiated(objectType, reason);
+        }
         if (imageHeapConstant instanceof ImageHeapObjectArray imageHeapArray) {
             AnalysisType arrayType = imageHeapArray.getType();
             for (int idx = 0; idx < imageHeapArray.getLength(); idx++) {

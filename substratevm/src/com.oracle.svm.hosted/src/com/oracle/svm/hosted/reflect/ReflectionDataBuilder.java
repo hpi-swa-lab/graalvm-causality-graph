@@ -262,9 +262,13 @@ public class ReflectionDataBuilder extends ConditionalConfigurationRegistry impl
         }
 
         AnalysisType type = metaAccess.lookupJavaType(clazz);
-        type.registerAsReachable("Is registered for reflection.");
+        try (var ignored = CausalityExport.setCause(CausalityEvents.ReflectionRegistration.create(clazz))) {
+            type.registerAsReachable("Is registered for reflection.");
+        }
         if (unsafeInstantiated) {
-            type.registerAsUnsafeAllocated("Is registered via reflection metadata.");
+            try (var ignored = CausalityExport.setCause(CausalityEvents.ReflectionRegistration.create(clazz))) {
+                type.registerAsUnsafeAllocated("Is registered via reflection metadata.");
+            }
             classForNameSupport.registerUnsafeAllocated(condition, clazz);
         }
 
@@ -500,10 +504,7 @@ public class ReflectionDataBuilder extends ConditionalConfigurationRegistry impl
          */
         if (!queriedOnly) {
             methodAccessors.computeIfAbsent(analysisMethod, aMethod -> {
-                SubstrateAccessor accessor;
-                try (var ignored = CausalityExport.setCause(CausalityEvents.ReflectionRegistration.create(reflectExecutable))) {
-                    accessor = ImageSingletons.lookup(ReflectionFeature.class).getOrCreateAccessor(reflectExecutable);
-                }
+                SubstrateAccessor accessor = ImageSingletons.lookup(ReflectionFeature.class).getOrCreateAccessor(reflectExecutable);
                 universe.getHeapScanner().rescanObject(accessor);
                 return accessor;
             });

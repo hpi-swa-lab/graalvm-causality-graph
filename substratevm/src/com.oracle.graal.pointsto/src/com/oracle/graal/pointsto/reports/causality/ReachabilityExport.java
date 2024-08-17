@@ -72,6 +72,7 @@ public class ReachabilityExport {
             this.synthetic = synthetic;
         }
 
+        @Override
         EconomicMap<String, Object> serialize() {
             EconomicMap<String, Object> map = super.serialize();
             ArrayList<String> flagsList = new ArrayList<>();
@@ -97,6 +98,7 @@ public class ReachabilityExport {
             this.synthetic = synthetic;
         }
 
+        @Override
         EconomicMap<String, Object> serialize() {
             EconomicMap<String, Object> map = super.serialize();
             ArrayList<String> flagsList = new ArrayList<>();
@@ -119,6 +121,7 @@ public class ReachabilityExport {
             synthetic = type.isSynthetic();
         }
 
+        @Override
         EconomicMap<String, Object> serialize() {
             EconomicMap<String, Object> map = super.serialize();
 
@@ -150,6 +153,7 @@ public class ReachabilityExport {
     private static class Package extends HierarchyNode {
         public final HashMap<String, Type> types = new HashMap<>();
 
+        @Override
         public EconomicMap<String, Object> serialize() {
             EconomicMap<String, Object> map = super.serialize();
             EconomicMap<String, Object> typeMap = EconomicMap.create(types.size());
@@ -164,6 +168,7 @@ public class ReachabilityExport {
     }
 
     private static class File extends HierarchyNode {
+        @Override
         public EconomicMap<String, Object> serialize() {
             return super.serialize();
         }
@@ -183,6 +188,7 @@ public class ReachabilityExport {
             this.isSystem = isSystem;
         }
 
+        @Override
         public EconomicMap<String, Object> serialize() {
             EconomicMap<String, Object> map = super.serialize();
             if (path != null) {

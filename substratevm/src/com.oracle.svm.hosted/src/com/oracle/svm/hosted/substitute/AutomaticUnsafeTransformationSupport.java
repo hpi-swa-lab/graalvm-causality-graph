@@ -45,7 +45,10 @@ import org.graalvm.nativeimage.ImageSingletons;
 import org.graalvm.nativeimage.hosted.FieldValueTransformer;
 
 import com.oracle.graal.pointsto.BigBang;
+import com.oracle.graal.pointsto.meta.AnalysisField;
 import com.oracle.graal.pointsto.phases.NoClassInitializationPlugin;
+import com.oracle.graal.pointsto.reports.causality.CausalityExport;
+import com.oracle.graal.pointsto.reports.causality.events.CausalityEvents;
 import com.oracle.graal.pointsto.util.GraalAccess;
 import com.oracle.svm.core.ParsingReason;
 import com.oracle.svm.core.annotate.RecomputeFieldValue;
@@ -290,7 +293,13 @@ public class AutomaticUnsafeTransformationSupport {
     }
 
     private static FieldOffsetFieldValueTransformer createFieldOffsetFieldValueTransformer(BigBang bb, ResolvedJavaField original, Field targetField) {
-        bb.postTask(debugContext -> bb.getMetaAccess().lookupJavaField(targetField).registerAsUnsafeAccessed(original));
+        bb.postTask(debugContext -> {
+            AnalysisField targetAnalysisField = bb.getMetaAccess().lookupJavaField(targetField);
+            CausalityExport.registerEdge(CausalityEvents.StructualProperty, CausalityEvents.FieldIsRecomputed.create(targetAnalysisField));
+            try (var ignored = CausalityExport.setCause(CausalityEvents.FieldIsRecomputed.create(targetAnalysisField))) {
+                targetAnalysisField.registerAsUnsafeAccessed(original);
+            }
+        });
         return new FieldOffsetFieldValueTransformer(targetField, original.getType().getJavaKind());
     }
 

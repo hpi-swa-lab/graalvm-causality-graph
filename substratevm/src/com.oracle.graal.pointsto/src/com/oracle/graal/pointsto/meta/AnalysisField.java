@@ -221,7 +221,9 @@ public abstract class AnalysisField extends AnalysisElement implements WrappedJa
     }
 
     public boolean registerAsAccessed(Object reason) {
-        getDeclaringClass().registerAsReachable(this);
+        try (var ignored = CausalityExport.setCause(CausalityEvents.Ignored)) {
+            declaringClass.registerAsReachable(this);
+        }
 
         assert isValidReason(reason) : "Registering a field as accessed needs to provide a valid reason.";
         CausalityExport.registerEvent(CausalityEvents.FieldRead.create(this));
@@ -238,7 +240,9 @@ public abstract class AnalysisField extends AnalysisElement implements WrappedJa
      * @param reason the reason why this field is read, non-null
      */
     public boolean registerAsRead(Object reason) {
-        getDeclaringClass().registerAsReachable(this);
+        try (var ignored = CausalityExport.setCause(CausalityEvents.Ignored)) {
+            declaringClass.registerAsReachable(this);
+        }
 
         assert isValidReason(reason) : "Registering a field as read needs to provide a valid reason.";
         CausalityExport.registerEvent(CausalityEvents.FieldRead.create(this));
@@ -260,7 +264,9 @@ public abstract class AnalysisField extends AnalysisElement implements WrappedJa
      * @param reason the reason why this field is written, non-null
      */
     public boolean registerAsWritten(Object reason) {
-        getDeclaringClass().registerAsReachable(this);
+        try (var ignored = CausalityExport.setCause(CausalityEvents.Ignored)) {
+            declaringClass.registerAsReachable(this);
+        }
 
         assert isValidReason(reason) : "Registering a field as written needs to provide a valid reason.";
         boolean firstAttempt = AtomicUtils.atomicSet(this, reason, isWrittenUpdater);
@@ -277,7 +283,9 @@ public abstract class AnalysisField extends AnalysisElement implements WrappedJa
     }
 
     public void registerAsFolded(Object reason) {
-        getDeclaringClass().registerAsReachable(this);
+        try (var ignored = CausalityExport.setCause(CausalityEvents.Ignored)) {
+            declaringClass.registerAsReachable(this);
+        }
 
         assert isValidReason(reason) : "Registering a field as folded needs to provide a valid reason.";
         if (AtomicUtils.atomicSet(this, reason, isFoldedUpdater)) {
@@ -473,7 +481,9 @@ public abstract class AnalysisField extends AnalysisElement implements WrappedJa
      * transformer to be installed reliably in reachability handler.
      */
     public void beforeFieldValueAccess() {
-        declaringClass.registerAsReachable(this);
+        try (var ignored = CausalityExport.setCause(CausalityEvents.Ignored)) {
+            declaringClass.registerAsReachable(this);
+        }
 
         declaringClass.forAllSuperTypes(type -> {
             type.ensureOnTypeReachableTaskDone();

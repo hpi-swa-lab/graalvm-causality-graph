@@ -609,8 +609,10 @@ public class MethodTypeFlowBuilder {
             }
         }
 
-        // Propagate the type flows through the method's graph
-        new NodeIterator(graph.start(), typeFlows).apply();
+        try (var ignored = CausalityExport.setCause(CausalityEvents.InlinedMethodCode.create((AnalysisMethod) graph.method()))) { // TODO: Look how we handled this in other parts of the MethodTypeFlowBuilder
+            // Propagate the type flows through the method's graph
+            new NodeIterator(graph.start(), typeFlows).apply();
+        }
 
         /* Prune the method graph. Eliminate nodes with no uses. Collect flows that need init. */
         postInitFlows = typeFlowGraphBuilder.build();

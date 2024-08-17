@@ -1073,7 +1073,9 @@ public class NativeImageGenerator {
                     compilerInvoker.verifyCompiler();
                 }
 
-                nativeLibraries = setupNativeLibraries(aProviders, cEnumProcessor, classInitializationSupport, debug);
+                try (var ignored2 = CausalityExport.setCause(CausalityEvents.InitialRegistration)) {
+                    nativeLibraries = setupNativeLibraries(aProviders, cEnumProcessor, classInitializationSupport, debug);
+                }
                 ImageSingletons.add(NativeLibraries.class, nativeLibraries);
 
                 try (Indent ignored2 = debug.logAndIndent("process startup initializers")) {
@@ -1094,7 +1096,9 @@ public class NativeImageGenerator {
 
                 loader.classLoaderSupport.getClassesToIncludeUnconditionally().forEach(cls -> bb.registerTypeForBaseImage(cls));
 
-                registerEntryPointStubs(entryPoints);
+                try (var ignored2 = CausalityExport.setCause(CausalityEvents.InitialRegistration)) {
+                    registerEntryPointStubs(entryPoints);
+                }
             }
 
             ProgressReporter.singleton().printInitializeEnd(featureHandler.getUserSpecificFeatures(), loader);

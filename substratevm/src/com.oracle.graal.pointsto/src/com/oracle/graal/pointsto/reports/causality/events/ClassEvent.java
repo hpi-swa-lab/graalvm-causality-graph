@@ -48,6 +48,7 @@ public abstract class ClassEvent extends CausalityEvent {
         return getTypeName(metaAccess) + typeDescriptor().suffix;
     }
 
+    @Override
     public ReachabilityExport.HierarchyNode getParent(ReachabilityExport export, AnalysisMetaAccess metaAccess) {
         return export.computeIfAbsent(metaAccess, clazz);
     }

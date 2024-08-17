@@ -99,47 +99,57 @@ public class SimulatedHeapTracing {
         private final Map<ImageHeapConstant, HeapConstantContext> objects = Collections.synchronizedMap(new IdentityHashMap<>());
         private final Map<AnalysisField, CausalityEvent> staticFields = Collections.synchronizedMap(new HashMap<>());
 
+        @Override
         public void traceAllocation(CausalityEvent cause, ImageHeapInstance instance, AnalysisType type) {
             objects.put(instance, new HeapInstanceContext(cause, type));
         }
 
+        @Override
         public void traceAllocation(CausalityEvent cause, ImageHeapArray array) {
             objects.put(array, array instanceof ImageHeapObjectArray ? new HeapArrayContext(cause, array.getLength()) : new HeapConstantContext(cause));
         }
 
+        @Override
         public void traceWrite(CausalityEvent cause, ImageHeapInstance instance, AnalysisField field) {
             ((HeapInstanceContext) objects.get(instance)).fieldWriters[field.getPosition()] = cause;
         }
 
+        @Override
         public void traceWrite(CausalityEvent cause, ImageHeapArray array, int position) {
             if (array instanceof ImageHeapObjectArray) {
                 ((HeapArrayContext) objects.get(array)).arrayWriters[position] = cause;
             }
         }
 
+        @Override
         public void traceWrite(CausalityEvent cause, AnalysisField field) {
             staticFields.put(field, cause);
         }
 
+        @Override
         public void traceClone(CausalityEvent cause, ImageHeapConstant original, ImageHeapConstant cloned) {
             objects.put(cloned, objects.get(original).clone(cause));
         }
 
+        @Override
         public CausalityEvent getHeapObjectCreator(ImageHeapConstant constant) {
             return objects.get(constant).allocator;
         }
 
+        @Override
         public CausalityEvent getHeapFieldAssigner(ImageHeapInstance receiver, AnalysisField field, JavaConstant value) {
             assert !field.isStatic();
             var context = (HeapInstanceContext) objects.get(receiver);
             return context.fieldWriters[field.getPosition()];
         }
 
+        @Override
         public CausalityEvent getHeapFieldAssigner(AnalysisField field, JavaConstant value) {
             assert field.isStatic();
             return staticFields.get(field);
         }
 
+        @Override
         public CausalityEvent getHeapArrayAssigner(ImageHeapObjectArray array, int elementIndex, JavaConstant value) {
             var context = (HeapArrayContext) objects.get(array);
             return context.arrayWriters[elementIndex];

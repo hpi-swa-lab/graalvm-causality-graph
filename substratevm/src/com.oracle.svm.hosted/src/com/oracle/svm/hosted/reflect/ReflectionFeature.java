@@ -153,7 +153,6 @@ public class ReflectionFeature implements InternalFeature, ReflectionSubstitutio
         if (analysisAccess == null) {
             throw VMError.shouldNotReachHere("New Method or Constructor found as reachable after static analysis: " + member);
         }
-        CausalityExport.registerEvent(CausalityEvents.ReflectionRegistration.create(member));
         return accessors.computeIfAbsent(member, m -> {
             try (var ignored = CausalityExport.overwriteCause(CausalityEvents.ReflectionRegistration.create(m))) {
                 return createAccessor(m);
