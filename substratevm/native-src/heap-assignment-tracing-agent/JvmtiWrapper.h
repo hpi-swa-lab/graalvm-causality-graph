@@ -81,6 +81,15 @@ public:
     }
 };
 
+class ClassMethods : public JvmtiArray<jmethodID>
+{
+public:
+    ClassMethods(jvmtiEnv* jvmti_env, jclass klass) : JvmtiArray<jmethodID>(jvmti_env)
+    {
+        throw_on_error(jvmti_env->GetClassMethods(klass, &len, &ptr));
+    }
+};
+
 class JvmtiString
 {
     jvmtiEnv* jvmti_env;

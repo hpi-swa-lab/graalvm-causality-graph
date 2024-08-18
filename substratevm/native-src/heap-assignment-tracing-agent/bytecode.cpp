@@ -1682,7 +1682,7 @@ size_t add_clinit_hook(const unsigned char* src_start, jint src_len, unsigned ch
             continue;
         const auto* code1 = reinterpret_cast<const Code_attribute_1*>(&*code1it);
 
-        bool insert_clinit_callback = name == "<clinit>";
+        bool insert_clinit_callback = false;// name == "<clinit>";
         bool insert_array_callback = true;
 
 #if LOG

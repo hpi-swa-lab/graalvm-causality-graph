@@ -91,6 +91,13 @@ static void JNICALL onVMObjectAlloc(
         jclass object_klass,
         jlong size);
 
+static void JNICALL onBreakpoint(
+    jvmtiEnv *jvmti_env,
+    JNIEnv* jni_env,
+    jthread thread,
+    jmethodID method,
+    jlocation location);
+
 
 class AgentThreadContext
 {
@@ -845,6 +852,7 @@ JNIEXPORT jint JNICALL Agent_OnLoad(JavaVM *vm, char *options, void *reserved)
     {
         cap.can_generate_field_modification_events = true;
         cap.can_access_local_variables = true;
+        cap.can_generate_breakpoint_events = true;
     }
 
     check_code(1, env->AddCapabilities(&cap));
@@ -859,6 +867,7 @@ JNIEXPORT jint JNICALL Agent_OnLoad(JavaVM *vm, char *options, void *reserved)
     callbacks.ThreadEnd = onThreadEnd;
     callbacks.ObjectFree = onObjectFree;
     callbacks.VMObjectAlloc = onVMObjectAlloc;
+    callbacks.Breakpoint = onBreakpoint;
 
     check_code(1, env->SetEventCallbacks(&callbacks, sizeof(callbacks)));
     check_code(1, env->SetEventNotificationMode(JVMTI_ENABLE, JVMTI_EVENT_VM_INIT, nullptr));
@@ -870,6 +879,10 @@ JNIEXPORT jint JNICALL Agent_OnLoad(JavaVM *vm, char *options, void *reserved)
     {
         check_code(1, env->SetEventNotificationMode(JVMTI_ENABLE, JVMTI_EVENT_CLASS_FILE_LOAD_HOOK, nullptr));
         check_code(1, env->SetEventNotificationMode(JVMTI_ENABLE, JVMTI_EVENT_FRAME_POP, nullptr));
+    }
+    if(breakpoints_enable)
+    {
+        check_code(1, env->SetEventNotificationMode(JVMTI_ENABLE, JVMTI_EVENT_BREAKPOINT, nullptr));
     }
 
     return 0;
@@ -918,6 +931,16 @@ static void processClass(jvmtiEnv* jvmti_env, jclass klass)
 #if LOG
         cerr << "SetFieldModificationWatch: " << class_signature << " . " << field_name << " (" << field_signature << ")\n";
 #endif
+    }
+
+    ClassMethods methods(jvmti_env, klass);
+
+    for(auto method : methods)
+    {
+        if (std::string_view("<clinit>") == std::string_view(MethodName::get(jvmti_env, method).name))
+        {
+            jvmti_env->SetBreakpoint(method, 0);
+        }
     }
 }
 
@@ -1259,6 +1282,7 @@ static void record_allocation(jvmtiEnv* jvmti_env, jobject newInstance)
 
 extern "C" JNIEXPORT void JNICALL Java_HeapAssignmentTracingHooks_onClinitStart(JNIEnv* env, jobject self)
 {
+    /*
     acquire_jvmti_and_wrap_exceptions([&](jvmtiEnv* jvmti_env){
         jvmtiPhase phase;
         check(jvmti_env->GetPhase(&phase));
@@ -1280,6 +1304,7 @@ extern "C" JNIEXPORT void JNICALL Java_HeapAssignmentTracingHooks_onClinitStart(
 
         check(jvmti_env->NotifyFramePop(thread, 1));
     });
+     */
 }
 
 static void JNICALL onThreadStart(jvmtiEnv *jvmti_env, JNIEnv* jni_env, jthread thread)
@@ -1317,6 +1342,36 @@ static void JNICALL onVMObjectAlloc(
     acquire_jvmti_and_wrap_exceptions([&]() {
         record_allocation(jvmti_env, object);
     });
+}
+
+static void JNICALL onBreakpoint(
+    jvmtiEnv *jvmti_env,
+    JNIEnv* jni_env,
+    jthread thread,
+    jmethodID method,
+    jlocation location)
+{
+    /*acquire_jvmti_and_wrap_exceptions([&](jvmtiEnv* jvmti_env){
+        jvmtiPhase phase;
+        check(jvmti_env->GetPhase(&phase));
+
+        if(phase != JVMTI_PHASE_LIVE)
+            return;
+
+        jthread thread;
+        check(jvmti_env->GetCurrentThread(&thread));
+
+        jmethodID method;
+        jlocation location;
+        check(jvmti_env->GetFrameLocation(thread, 0, &method, &location));
+
+        jclass type;
+        check(jvmti_env->GetMethodDeclaringClass(method, &type));
+
+        addToTracingStack(jvmti_env, jni_env, thread, type);
+
+        check(jvmti_env->NotifyFramePop(thread, 0));
+    });*/
 }
 
 extern "C" JNIEXPORT jobject JNICALL Java_com_oracle_graal_pointsto_reports_causality_HeapAssignmentTracing_00024NativeImpl_getResponsibleClass(JNIEnv* env, jobject thisClass, jobject imageHeapObject)
