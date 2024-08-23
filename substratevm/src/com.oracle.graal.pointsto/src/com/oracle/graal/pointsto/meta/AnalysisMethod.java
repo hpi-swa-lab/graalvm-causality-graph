@@ -922,6 +922,7 @@ public abstract class AnalysisMethod extends AnalysisElement implements WrappedJ
         return setGraph(expectedValue, () -> AnalysisParsedGraph.parseBytecode(bb, this));
     }
 
+    @SuppressWarnings("try")
     private AnalysisParsedGraph setGraph(Object expectedValue, Supplier<AnalysisParsedGraph> graphSupplier) {
         ReentrantLock lock = new ReentrantLock();
         lock.lock();

@@ -528,6 +528,7 @@ public class MethodTypeFlowBuilder {
 
     }
 
+    @SuppressWarnings("try")
     private void createTypeFlow() {
         processedNodes = new NodeBitMap(graph);
 

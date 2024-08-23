@@ -278,6 +278,7 @@ public class AnnotationSubstitutionProcessor extends SubstitutionProcessor {
     /**
      * Eagerly register all target fields of recomputed value fields as unsafe accessed.
      */
+    @SuppressWarnings("try")
     public void processComputedValueFields(BigBang bb) {
         for (ResolvedJavaField field : fieldSubstitutions.values()) {
             if (field instanceof ComputedValueField) {

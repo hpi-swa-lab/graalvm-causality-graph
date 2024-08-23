@@ -220,6 +220,7 @@ public abstract class AnalysisField extends AnalysisElement implements WrappedJa
         writtenBy = null;
     }
 
+    @SuppressWarnings("try")
     public boolean registerAsAccessed(Object reason) {
         try (var ignored = CausalityExport.setCause(CausalityEvents.Ignored)) {
             declaringClass.registerAsReachable(this);
@@ -239,6 +240,7 @@ public abstract class AnalysisField extends AnalysisElement implements WrappedJa
     /**
      * @param reason the reason why this field is read, non-null
      */
+    @SuppressWarnings("try")
     public boolean registerAsRead(Object reason) {
         try (var ignored = CausalityExport.setCause(CausalityEvents.Ignored)) {
             declaringClass.registerAsReachable(this);
@@ -263,6 +265,7 @@ public abstract class AnalysisField extends AnalysisElement implements WrappedJa
      *
      * @param reason the reason why this field is written, non-null
      */
+    @SuppressWarnings("try")
     public boolean registerAsWritten(Object reason) {
         try (var ignored = CausalityExport.setCause(CausalityEvents.Ignored)) {
             declaringClass.registerAsReachable(this);
@@ -282,6 +285,7 @@ public abstract class AnalysisField extends AnalysisElement implements WrappedJa
         return firstAttempt;
     }
 
+    @SuppressWarnings("try")
     public void registerAsFolded(Object reason) {
         try (var ignored = CausalityExport.setCause(CausalityEvents.Ignored)) {
             declaringClass.registerAsReachable(this);
@@ -480,6 +484,7 @@ public abstract class AnalysisField extends AnalysisElement implements WrappedJa
      * marked as reachable are executed before accessing field values. This allows field value
      * transformer to be installed reliably in reachability handler.
      */
+    @SuppressWarnings("try")
     public void beforeFieldValueAccess() {
         try (var ignored = CausalityExport.setCause(CausalityEvents.Ignored)) {
             declaringClass.registerAsReachable(this);

@@ -256,6 +256,7 @@ public class ReflectionDataBuilder extends ConditionalConfigurationRegistry impl
         });
     }
 
+    @SuppressWarnings("try")
     private void registerClass(ConfigurationCondition condition, Class<?> clazz, boolean unsafeInstantiated, boolean allowForName) {
         if (shouldExcludeClass(clazz)) {
             return;
@@ -363,7 +364,6 @@ public class ReflectionDataBuilder extends ConditionalConfigurationRegistry impl
     }
 
     @Override
-    @SuppressWarnings("try")
     public void register(ConfigurationCondition condition, boolean queriedOnly, Executable... executables) {
         requireNonNull(executables, "executable");
         for (Executable executable : executables) {
@@ -428,6 +428,7 @@ public class ReflectionDataBuilder extends ConditionalConfigurationRegistry impl
         });
     }
 
+    @SuppressWarnings("try")
     private void registerMethods(ConfigurationCondition cnd, boolean queriedOnly, Executable[] reflectExecutables) {
         for (Executable reflectExecutable : reflectExecutables) {
             try (var ignored = CausalityExport.setCause(CausalityEvents.ReflectionRegistration.create(reflectExecutable))) {
@@ -580,7 +581,8 @@ public class ReflectionDataBuilder extends ConditionalConfigurationRegistry impl
             }
         });
     }
-
+    
+    @SuppressWarnings("try")
     private void registerFields(ConfigurationCondition cnd, boolean queriedOnly, Field[] reflectFields) {
         for (Field reflectField : reflectFields) {
             try (var ignored = CausalityExport.setCause(CausalityEvents.ReflectionRegistration.create(reflectField))) {

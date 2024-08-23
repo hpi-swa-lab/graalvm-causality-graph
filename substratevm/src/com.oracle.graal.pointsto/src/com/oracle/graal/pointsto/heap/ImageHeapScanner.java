@@ -334,6 +334,7 @@ public abstract class ImageHeapScanner {
         }
     }
 
+    @SuppressWarnings("try")
     private ImageHeapArray createImageHeapObjectArray(JavaConstant constant, AnalysisType type, int length, ScanReason reason) {
         ImageHeapObjectArray array = new ImageHeapObjectArray(type, constant, length);
         /* Read hosted array element values only when the array is initialized. */

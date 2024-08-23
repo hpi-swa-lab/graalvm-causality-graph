@@ -292,6 +292,7 @@ public class AutomaticUnsafeTransformationSupport {
         FieldValueInterceptionSupport.singleton().registerFieldValueTransformer(original, transformer);
     }
 
+    @SuppressWarnings("try")
     private static FieldOffsetFieldValueTransformer createFieldOffsetFieldValueTransformer(BigBang bb, ResolvedJavaField original, Field targetField) {
         bb.postTask(debugContext -> {
             AnalysisField targetAnalysisField = bb.getMetaAccess().lookupJavaField(targetField);

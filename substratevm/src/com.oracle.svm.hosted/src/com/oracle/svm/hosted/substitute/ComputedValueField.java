@@ -307,6 +307,7 @@ public final class ComputedValueField extends FieldValueTransformation implement
     }
 
     @Override
+    @SuppressWarnings("try")
     protected JavaConstant computeValue(ClassInitializationSupport classInitializationSupport, ResolvedJavaField field, JavaConstant receiver) {
         assert isValueAvailable() : "Field " + format("%H.%n") + " value not available for reading.";
         JavaConstant result;

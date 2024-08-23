@@ -54,6 +54,7 @@ public class CEntryPointLiteralFeature implements InternalFeature {
     class CEntryPointLiteralObjectReplacer implements Function<Object, Object> {
 
         @Override
+        @SuppressWarnings("try")
         public Object apply(Object source) {
             if (source instanceof CEntryPointLiteralCodePointer) {
                 CEntryPointLiteralCodePointer original = (CEntryPointLiteralCodePointer) source;
