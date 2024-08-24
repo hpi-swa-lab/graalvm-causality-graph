@@ -22,11 +22,16 @@ public:
     }
 };
 
-static inline void throw_on_error(jvmtiError code)
+static inline void throw_on_error_impl(jvmtiError err, const char* code, const char* filename, int line)
 {
-    if(code != JVMTI_ERROR_NONE)
-        throw JvmtiException(code);
+    if(err != JVMTI_ERROR_NONE)
+    {
+        std::cerr << "JVMTI ERROR " << err << " at " << filename << ':' << line << ": \"" << code << '"' << std::endl;
+        throw JvmtiException(err);
+    }
 }
+
+#define throw_on_error(code) throw_on_error_impl(code, #code, __FILE__, __LINE__)
 
 template<typename T>
 class JvmtiArray
