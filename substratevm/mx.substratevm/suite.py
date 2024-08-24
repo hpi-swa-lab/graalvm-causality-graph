@@ -212,8 +212,7 @@ suite = {
             "platformDependent": True,
             "ninja_targets" : ["all"],
             "results" : [
-                "<lib:heap-assignment-tracing-agent>",
-                "heap-assignment-tracing-agent-hooks.jar"
+                "<lib:heap-assignment-tracing-agent>"
             ],
             "cmakeConfig" : {
                 "CMAKE_BUILD_TYPE" : "Release"
@@ -1549,8 +1548,7 @@ suite = {
             "license": "MIT",
             "layout" : {
                 "./" : [
-                "dependency:heap-assignment-tracing-agent/<lib:heap-assignment-tracing-agent>",
-                "dependency:heap-assignment-tracing-agent/heap-assignment-tracing-agent-hooks.jar",
+                "dependency:heap-assignment-tracing-agent/<lib:heap-assignment-tracing-agent>"
                 ],
             },
         },
