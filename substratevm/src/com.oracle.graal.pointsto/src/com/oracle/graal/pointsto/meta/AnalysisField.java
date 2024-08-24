@@ -222,12 +222,11 @@ public abstract class AnalysisField extends AnalysisElement implements WrappedJa
 
     @SuppressWarnings("try")
     public boolean registerAsAccessed(Object reason) {
-        try (var ignored = CausalityExport.setCause(CausalityEvents.Ignored)) {
+        try (var ignored = CausalityExport.pushCause(CausalityEvents.FieldRead.create(this))) {
             declaringClass.registerAsReachable(this);
         }
 
         assert isValidReason(reason) : "Registering a field as accessed needs to provide a valid reason.";
-        CausalityExport.registerEvent(CausalityEvents.FieldRead.create(this));
         boolean firstAttempt = AtomicUtils.atomicSet(this, reason, isAccessedUpdater);
         if (firstAttempt) {
             onReachable();
@@ -242,12 +241,11 @@ public abstract class AnalysisField extends AnalysisElement implements WrappedJa
      */
     @SuppressWarnings("try")
     public boolean registerAsRead(Object reason) {
-        try (var ignored = CausalityExport.setCause(CausalityEvents.Ignored)) {
+        try (var ignored = CausalityExport.pushCause(CausalityEvents.FieldRead.create(this))) {
             declaringClass.registerAsReachable(this);
         }
 
         assert isValidReason(reason) : "Registering a field as read needs to provide a valid reason.";
-        CausalityExport.registerEvent(CausalityEvents.FieldRead.create(this));
         boolean firstAttempt = AtomicUtils.atomicSet(this, reason, isReadUpdater);
         if (readBy != null) {
             readBy.put(reason, Boolean.TRUE);
@@ -267,7 +265,7 @@ public abstract class AnalysisField extends AnalysisElement implements WrappedJa
      */
     @SuppressWarnings("try")
     public boolean registerAsWritten(Object reason) {
-        try (var ignored = CausalityExport.setCause(CausalityEvents.Ignored)) {
+        try (var ignored = CausalityExport.pushCause(CausalityEvents.FieldWritten.create(this))) {
             declaringClass.registerAsReachable(this);
         }
 
@@ -287,7 +285,7 @@ public abstract class AnalysisField extends AnalysisElement implements WrappedJa
 
     @SuppressWarnings("try")
     public void registerAsFolded(Object reason) {
-        try (var ignored = CausalityExport.setCause(CausalityEvents.Ignored)) {
+        try (var ignored = CausalityExport.pushCause(CausalityEvents.FieldRead.create(this))) {
             declaringClass.registerAsReachable(this);
         }
 

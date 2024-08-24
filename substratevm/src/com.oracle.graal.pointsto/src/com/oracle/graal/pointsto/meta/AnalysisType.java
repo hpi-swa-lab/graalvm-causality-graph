@@ -521,8 +521,7 @@ public abstract class AnalysisType extends AnalysisElement implements WrappedJav
     @SuppressWarnings("try")
     public boolean registerAsInstantiated(Object reason) {
         assert isValidReason(reason) : "Registering a type as instantiated needs to provide a valid reason.";
-        CausalityExport.registerEvent(CausalityEvents.TypeInstantiated.create(this));
-        try (var ignored = CausalityExport.overwriteCause(CausalityEvents.TypeInstantiated.create(this))) {
+        try (var ignored = CausalityExport.pushCause(CausalityEvents.TypeInstantiated.create(this))) {
             registerAsReachable(reason);
         }
         if (AtomicUtils.atomicSet(this, reason, isInstantiatedUpdater)) {

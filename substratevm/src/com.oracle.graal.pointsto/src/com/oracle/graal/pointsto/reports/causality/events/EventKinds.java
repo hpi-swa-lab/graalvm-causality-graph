@@ -36,6 +36,7 @@ public enum EventKinds {
     ConfigurationFile("Configuration File"),
     Feature("Feature"),
     FieldRead("Read"),
+    FieldWritten("Written"),
     FieldIsRecomputed("Recomputed"),
     HeapObjectClass("Class-Object in Heap"),
     HeapObjectDynamicHub("DynamicHub-Object in Heap"),

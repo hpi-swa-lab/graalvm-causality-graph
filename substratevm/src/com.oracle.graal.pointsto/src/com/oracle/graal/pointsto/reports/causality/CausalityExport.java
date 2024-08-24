@@ -159,6 +159,11 @@ public final class CausalityExport {
         return get().setCause(event, level, true);
     }
 
+    public static NonThrowingAutoCloseable pushCause(CausalityEvent event) {
+        registerEvent(event);
+        return overwriteCause(event);
+    }
+
     public static NonThrowingAutoCloseable resetCause() {
         return overwriteCause(null);
     }

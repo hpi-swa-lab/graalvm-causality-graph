@@ -219,6 +219,7 @@ public final class CausalityEvents {
     public static final EventFactory<AnalysisType> TypeInstantiated = factory(TypeInstantiated::new);
     public static final EventFactory<AnalysisType> TypeInHeap = factory(TypeInHeap::new);
     public static final EventFactory<AnalysisField> FieldRead = factory(FieldRead::new);
+    public static final EventFactory<AnalysisField> FieldWritten = factory(FieldWritten::new);
     public static final EventFactory<AnalysisField> FieldIsRecomputed = factory(FieldIsRecomputed::new);
     public static final EventFactory<Consumer<DuringAnalysisAccess>> ReachabilityNotificationCallback = factory(ReachabilityNotificationCallback::new);
     public static final EventFactory<BiConsumer<DuringAnalysisAccess, Class<?>>> SubtypeReachableNotificationCallback = factory(SubtypeReachableNotificationCallback::new);
