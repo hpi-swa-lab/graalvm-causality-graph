@@ -310,20 +310,23 @@ public class ReflectionFeature implements InternalFeature, ReflectionSubstitutio
         DuringAnalysisAccessImpl access = (DuringAnalysisAccessImpl) a;
 
         ResolvedJavaMethod expandSignatureMethod = ((MethodPointer) accessor.getExpandSignature()).getMethod();
-        access.registerAsRoot((AnalysisMethod) expandSignatureMethod, true, reason);
-
         ResolvedJavaMethod targetMethod = accessor.getTargetMethod();
-        if (targetMethod != null) {
-            if (!targetMethod.isAbstract()) {
-                access.registerAsRoot((AnalysisMethod) targetMethod, true, reason);
-            }
-            /* If the accessor can be used for a virtual call, register virtual root method. */
-            if (accessor instanceof SubstrateMethodAccessor mAccessor && mAccessor.getVTableOffset() != SubstrateMethodAccessor.STATICALLY_BOUND) {
-                access.registerAsRoot((AnalysisMethod) targetMethod, false, reason);
-            }
-            /* Register constructor factory method */
-            if (accessor instanceof SubstrateConstructorAccessor cAccessor) {
-                access.registerAsRoot((AnalysisMethod) cAccessor.getFactoryMethod(), false, reason);
+
+        try (var ignored = CausalityExport.overwriteCause(CausalityEvents.ReflectionRegistration.create(accessor.getMember()))) {
+            access.registerAsRoot((AnalysisMethod) expandSignatureMethod, true, reason);
+
+            if (targetMethod != null) {
+                if (!targetMethod.isAbstract()) {
+                    access.registerAsRoot((AnalysisMethod) targetMethod, true, reason);
+                }
+                /* If the accessor can be used for a virtual call, register virtual root method. */
+                if (accessor instanceof SubstrateMethodAccessor mAccessor && mAccessor.getVTableOffset() != SubstrateMethodAccessor.STATICALLY_BOUND) {
+                    access.registerAsRoot((AnalysisMethod) targetMethod, false, reason);
+                }
+                /* Register constructor factory method */
+                if (accessor instanceof SubstrateConstructorAccessor cAccessor) {
+                    access.registerAsRoot((AnalysisMethod) cAccessor.getFactoryMethod(), false, reason);
+                }
             }
         }
     }
