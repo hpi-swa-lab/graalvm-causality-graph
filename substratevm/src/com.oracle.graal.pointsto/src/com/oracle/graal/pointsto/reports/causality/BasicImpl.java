@@ -25,6 +25,7 @@
 package com.oracle.graal.pointsto.reports.causality;
 
 import java.util.ArrayDeque;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Deque;
@@ -36,6 +37,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+
+import org.graalvm.collections.Pair;
 
 import com.oracle.graal.pointsto.BigBang;
 import com.oracle.graal.pointsto.ObjectScanner;
@@ -52,6 +55,7 @@ import com.oracle.graal.pointsto.reports.causality.events.BuildTimeClassInitiali
 import com.oracle.graal.pointsto.reports.causality.events.CausalityEvent;
 import com.oracle.graal.pointsto.reports.causality.events.CausalityEvents;
 import com.oracle.graal.pointsto.reports.causality.events.Feature;
+import com.oracle.graal.pointsto.reports.causality.events.ImmutableStackTrace;
 import com.oracle.graal.pointsto.reports.causality.events.InlinedMethodCode;
 import com.oracle.graal.pointsto.util.AnalysisError;
 
@@ -68,6 +72,45 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
     protected TContext getContext() {
         return threadContexts.get();
     }
+
+    private static int getSkipCount(StackTraceElement[] stackTrace) {
+        return (int) Arrays.stream(stackTrace).takeWhile(ste -> ste.getClassName().startsWith("com.oracle.graal.pointsto.reports.causality.")).count();
+    }
+
+    static final class StackPath {
+        private final StackTraceElement[] stackTraceDiff;
+
+        public StackPath(StackTraceElement[] stackTraceDiff) {
+            this.stackTraceDiff = stackTraceDiff;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null) return false;
+            if (o instanceof StackPath path) {
+                return Arrays.equals(stackTraceDiff, path.stackTraceDiff);
+            }
+            return false;
+        }
+
+        @Override
+        public int hashCode() {
+            return Arrays.hashCode(stackTraceDiff);
+        }
+
+        @Override
+        public String toString() {
+            StringBuilder sb = new StringBuilder();
+            for (StackTraceElement stackTraceElement : stackTraceDiff) {
+                sb.append(stackTraceElement);
+                sb.append("\n");
+            }
+            return sb.toString();
+        }
+    }
+
+    private ConcurrentHashMap<Pair<StackTraceElement, StackTraceElement>, ConcurrentHashMap<StackPath, StackPath>> connections = new ConcurrentHashMap<>();
 
     public static class ThreadContext {
         private final Deque<CauseToken> causes = new ArrayDeque<>();
@@ -89,10 +132,17 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
         public final class CauseToken implements CausalityExport.NonThrowingAutoCloseable {
             private final CausalityEvent event;
             private final CausalityExport.HeapTracing level;
+            public final StackTraceElement site;
+            public final int stackDepth;
 
             private CauseToken(CausalityEvent event, CausalityExport.HeapTracing level, boolean overwriteSilently) {
                 this.event = event;
                 this.level = level;
+
+                var stackTrace = new Throwable().getStackTrace();
+                int nSkip = getSkipCount(stackTrace);
+                this.site = stackTrace[nSkip];
+                this.stackDepth = stackTrace.length - nSkip - 1;
 
                 if (!overwriteSilently && !causes.isEmpty()) {
                     CausalityEvent top = causes.peek().event;
@@ -137,14 +187,31 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
     @Override
     public void registerEdge(CausalityEvent cause, CausalityEvent consequence) {
         if (cause == null || cause.root()) {
-            CausalityEvent topCause = threadContexts.get().topCause();
-            if (topCause != null) {
-                cause = topCause;
+            ThreadContext.CauseToken topCauseToken = threadContexts.get().topCauseToken();
+            if (topCauseToken != null) {
+                StackTraceElement[] stackTrace = new Throwable().getStackTrace();
+                int nSkip = getSkipCount(stackTrace);
+                StackTraceElement site = stackTrace[nSkip];
+                connections.computeIfAbsent(Pair.create(topCauseToken.site, site), k -> new ConcurrentHashMap<>())
+                        .computeIfAbsent(new StackPath(Arrays.copyOfRange(stackTrace, nSkip, stackTrace.length - topCauseToken.stackDepth)), k -> k);
+                cause = topCauseToken.event;
+                if (cause == consequence) {
+                    return;
+                }
+                var causeConnection = CausalityEvents.CauseConnection.create(topCauseToken.site, site);
+                var causeConnectionStack = CausalityEvents.CauseConnectionStack.create(new ImmutableStackTrace(Arrays.copyOfRange(stackTrace, nSkip, stackTrace.length - topCauseToken.stackDepth)));
+                directEdges.put(new Graph.DirectEdge(null, causeConnection), Boolean.TRUE);
+                directEdges.put(new Graph.DirectEdge(causeConnection, causeConnectionStack), Boolean.TRUE);
+                registerConjunctiveEdge(cause, causeConnectionStack, consequence);
+                return;
             }
         }
         if (cause == consequence) {
             return;
         }
+        /*if (cause == null && !consequence.root()) {
+            System.err.println("Unknown root!");
+        }*/
         directEdges.put(new Graph.DirectEdge(cause, consequence), Boolean.TRUE);
     }
 
@@ -275,6 +342,18 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
 
     @Override
     protected Graph createCausalityGraph(PointsToAnalysis bb) {
+        System.err.println("#Connections: " + connections.size());
+        System.err.println("#Paths: " + connections.values().stream().mapToInt(Map::size).sum());
+        int i = 0;
+        for (var entry : connections.entrySet()) {
+            System.err.println("--- Connection " + i + ": #Paths: " + entry.getValue().size() + " ---");
+            i++;
+            for (var path : entry.getValue().keySet()) {
+                System.err.println("-");
+                System.err.println(path);
+            }
+        }
+
         Graph g = new Graph();
 
         var directEdges = this.directEdges.keySet();

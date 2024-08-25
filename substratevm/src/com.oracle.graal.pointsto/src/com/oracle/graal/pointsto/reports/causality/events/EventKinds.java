@@ -59,6 +59,9 @@ public enum EventKinds {
 
     DeferredTask("Deferred Task"),
 
+    CauseConnection("Cause Connection"),
+    CauseConnectionStack("Cause Connection Stack"),
+
     AutomaticFeatureRegistration("Automatic Feature Registration"),
     UserRequestedFeatureRegistration("User-Requested Feature Registration"),
     InitialRegistrations("Initial Registrations"),
