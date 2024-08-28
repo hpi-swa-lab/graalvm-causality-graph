@@ -36,58 +36,59 @@ import com.oracle.graal.pointsto.heap.ImageHeapInstance;
 import com.oracle.graal.pointsto.heap.ImageHeapObjectArray;
 import com.oracle.graal.pointsto.meta.AnalysisField;
 import com.oracle.graal.pointsto.meta.AnalysisType;
-import com.oracle.graal.pointsto.reports.causality.events.CausalityEvent;
+import com.oracle.graal.pointsto.reports.causality.facts.Fact;
+
 import jdk.vm.ci.meta.JavaConstant;
 
 public class SimulatedHeapTracing {
     private static class HeapConstantContext {
-        public final CausalityEvent allocator;
+        public final Fact allocator;
 
-        HeapConstantContext(CausalityEvent allocator) {
+        HeapConstantContext(Fact allocator) {
             this.allocator = allocator;
         }
 
-        public HeapConstantContext clone(CausalityEvent cloner) {
+        public HeapConstantContext clone(Fact cloner) {
             return new HeapConstantContext(cloner);
         }
     }
 
     private static final class HeapInstanceContext extends HeapConstantContext {
-        public final CausalityEvent[] fieldWriters;
+        public final Fact[] fieldWriters;
 
-        HeapInstanceContext(CausalityEvent allocator, AnalysisType constantType) {
+        HeapInstanceContext(Fact allocator, AnalysisType constantType) {
             super(allocator);
-            this.fieldWriters = new CausalityEvent[constantType.getInstanceFields(true).length];
+            this.fieldWriters = new Fact[constantType.getInstanceFields(true).length];
         }
 
-        HeapInstanceContext(CausalityEvent cloner, HeapInstanceContext original) {
+        HeapInstanceContext(Fact cloner, HeapInstanceContext original) {
             super(cloner);
-            fieldWriters = new CausalityEvent[original.fieldWriters.length];
+            fieldWriters = new Fact[original.fieldWriters.length];
             Arrays.fill(fieldWriters, cloner);
         }
 
         @Override
-        public HeapConstantContext clone(CausalityEvent cloner) {
+        public HeapConstantContext clone(Fact cloner) {
             return new HeapInstanceContext(cloner, this);
         }
     }
 
     private static final class HeapArrayContext extends HeapConstantContext {
-        public final CausalityEvent[] arrayWriters;
+        public final Fact[] arrayWriters;
 
-        HeapArrayContext(CausalityEvent allocator, int length) {
+        HeapArrayContext(Fact allocator, int length) {
             super(allocator);
-            this.arrayWriters = new CausalityEvent[length];
+            this.arrayWriters = new Fact[length];
         }
 
-        HeapArrayContext(CausalityEvent cloner, HeapArrayContext orignal) {
+        HeapArrayContext(Fact cloner, HeapArrayContext orignal) {
             super(cloner);
-            arrayWriters = new CausalityEvent[orignal.arrayWriters.length];
+            arrayWriters = new Fact[orignal.arrayWriters.length];
             Arrays.fill(arrayWriters, cloner);
         }
 
         @Override
-        public HeapConstantContext clone(CausalityEvent cloner) {
+        public HeapConstantContext clone(Fact cloner) {
             return new HeapArrayContext(cloner, this);
         }
     }
@@ -97,98 +98,98 @@ public class SimulatedHeapTracing {
 
     public static final class Impl extends SimulatedHeapTracing {
         private final Map<ImageHeapConstant, HeapConstantContext> objects = Collections.synchronizedMap(new IdentityHashMap<>());
-        private final Map<AnalysisField, CausalityEvent> staticFields = Collections.synchronizedMap(new HashMap<>());
+        private final Map<AnalysisField, Fact> staticFields = Collections.synchronizedMap(new HashMap<>());
 
         @Override
-        public void traceAllocation(CausalityEvent cause, ImageHeapInstance instance, AnalysisType type) {
+        public void traceAllocation(Fact cause, ImageHeapInstance instance, AnalysisType type) {
             objects.put(instance, new HeapInstanceContext(cause, type));
         }
 
         @Override
-        public void traceAllocation(CausalityEvent cause, ImageHeapArray array) {
+        public void traceAllocation(Fact cause, ImageHeapArray array) {
             objects.put(array, array instanceof ImageHeapObjectArray ? new HeapArrayContext(cause, array.getLength()) : new HeapConstantContext(cause));
         }
 
         @Override
-        public void traceWrite(CausalityEvent cause, ImageHeapInstance instance, AnalysisField field) {
+        public void traceWrite(Fact cause, ImageHeapInstance instance, AnalysisField field) {
             ((HeapInstanceContext) objects.get(instance)).fieldWriters[field.getPosition()] = cause;
         }
 
         @Override
-        public void traceWrite(CausalityEvent cause, ImageHeapArray array, int position) {
+        public void traceWrite(Fact cause, ImageHeapArray array, int position) {
             if (array instanceof ImageHeapObjectArray) {
                 ((HeapArrayContext) objects.get(array)).arrayWriters[position] = cause;
             }
         }
 
         @Override
-        public void traceWrite(CausalityEvent cause, AnalysisField field) {
+        public void traceWrite(Fact cause, AnalysisField field) {
             staticFields.put(field, cause);
         }
 
         @Override
-        public void traceClone(CausalityEvent cause, ImageHeapConstant original, ImageHeapConstant cloned) {
+        public void traceClone(Fact cause, ImageHeapConstant original, ImageHeapConstant cloned) {
             objects.put(cloned, objects.get(original).clone(cause));
         }
 
         @Override
-        public CausalityEvent getHeapObjectCreator(ImageHeapConstant constant) {
+        public Fact getHeapObjectCreator(ImageHeapConstant constant) {
             return objects.get(constant).allocator;
         }
 
         @Override
-        public CausalityEvent getHeapFieldAssigner(ImageHeapInstance receiver, AnalysisField field, JavaConstant value) {
+        public Fact getHeapFieldAssigner(ImageHeapInstance receiver, AnalysisField field, JavaConstant value) {
             assert !field.isStatic();
             var context = (HeapInstanceContext) objects.get(receiver);
             return context.fieldWriters[field.getPosition()];
         }
 
         @Override
-        public CausalityEvent getHeapFieldAssigner(AnalysisField field, JavaConstant value) {
+        public Fact getHeapFieldAssigner(AnalysisField field, JavaConstant value) {
             assert field.isStatic();
             return staticFields.get(field);
         }
 
         @Override
-        public CausalityEvent getHeapArrayAssigner(ImageHeapObjectArray array, int elementIndex, JavaConstant value) {
+        public Fact getHeapArrayAssigner(ImageHeapObjectArray array, int elementIndex, JavaConstant value) {
             var context = (HeapArrayContext) objects.get(array);
             return context.arrayWriters[elementIndex];
         }
     }
 
-    public static final SimulatedHeapTracing instance = CausalityExport.isEnabled() ? new Impl() : new SimulatedHeapTracing();
+    public static final SimulatedHeapTracing instance = Causality.isEnabled() ? new Impl() : new SimulatedHeapTracing();
 
-    public void traceAllocation(CausalityEvent cause, ImageHeapInstance instance, AnalysisType type) {
+    public void traceAllocation(Fact cause, ImageHeapInstance instance, AnalysisType type) {
     }
 
-    public void traceAllocation(CausalityEvent cause, ImageHeapArray array) {
+    public void traceAllocation(Fact cause, ImageHeapArray array) {
     }
 
-    public void traceWrite(CausalityEvent cause, ImageHeapInstance instance, AnalysisField field) {
+    public void traceWrite(Fact cause, ImageHeapInstance instance, AnalysisField field) {
     }
 
-    public void traceWrite(CausalityEvent cause, ImageHeapArray array, int position) {
+    public void traceWrite(Fact cause, ImageHeapArray array, int position) {
     }
 
-    public void traceWrite(CausalityEvent cause, AnalysisField field) {
+    public void traceWrite(Fact cause, AnalysisField field) {
     }
 
-    public void traceClone(CausalityEvent cause, ImageHeapConstant original, ImageHeapConstant cloned) {
+    public void traceClone(Fact cause, ImageHeapConstant original, ImageHeapConstant cloned) {
     }
 
-    public CausalityEvent getHeapObjectCreator(ImageHeapConstant constant) {
+    public Fact getHeapObjectCreator(ImageHeapConstant constant) {
         throw new UnsupportedOperationException();
     }
 
-    public CausalityEvent getHeapFieldAssigner(ImageHeapInstance receiver, AnalysisField field, JavaConstant value) {
+    public Fact getHeapFieldAssigner(ImageHeapInstance receiver, AnalysisField field, JavaConstant value) {
         throw new UnsupportedOperationException();
     }
 
-    public CausalityEvent getHeapFieldAssigner(AnalysisField field, JavaConstant value) {
+    public Fact getHeapFieldAssigner(AnalysisField field, JavaConstant value) {
         throw new UnsupportedOperationException();
     }
 
-    public CausalityEvent getHeapArrayAssigner(ImageHeapObjectArray array, int elementIndex, JavaConstant value) {
+    public Fact getHeapArrayAssigner(ImageHeapObjectArray array, int elementIndex, JavaConstant value) {
         throw new UnsupportedOperationException();
     }
 }

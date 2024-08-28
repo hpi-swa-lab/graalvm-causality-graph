@@ -69,8 +69,8 @@ import com.oracle.graal.pointsto.flow.SourceTypeFlow;
 import com.oracle.graal.pointsto.flow.TypeFlow;
 import com.oracle.graal.pointsto.meta.AnalysisMetaAccess;
 import com.oracle.graal.pointsto.meta.AnalysisType;
-import com.oracle.graal.pointsto.reports.causality.events.CausalityEvent;
-import com.oracle.graal.pointsto.reports.causality.events.EventKinds;
+import com.oracle.graal.pointsto.reports.causality.facts.Fact;
+import com.oracle.graal.pointsto.reports.causality.facts.FactKinds;
 import com.oracle.graal.pointsto.typestate.MultiTypeState;
 import com.oracle.graal.pointsto.typestate.TypeState;
 import com.oracle.graal.pointsto.typestate.TypeStateUtils;
@@ -97,10 +97,10 @@ class Graph {
     }
 
     static class FlowNode extends Node {
-        public final CausalityEvent containing;
+        public final Fact containing;
         public final TypeState filter;
 
-        FlowNode(String debugStr, CausalityEvent containing, TypeState filter) {
+        FlowNode(String debugStr, Fact containing, TypeState filter) {
             super(debugStr);
             this.containing = containing;
             this.filter = filter;
@@ -115,7 +115,7 @@ class Graph {
     }
 
     static final class InvocationFlowNode extends FlowNode {
-        InvocationFlowNode(CausalityEvent invocationTarget, TypeState filter) {
+        InvocationFlowNode(Fact invocationTarget, TypeState filter) {
             super("Virtual Invocation Flow Node: " + invocationTarget, invocationTarget, filter);
         }
 
@@ -126,10 +126,10 @@ class Graph {
     }
 
     static class DirectEdge {
-        public final CausalityEvent from;
-        public final CausalityEvent to;
+        public final Fact from;
+        public final Fact to;
 
-        DirectEdge(CausalityEvent from, CausalityEvent to) {
+        DirectEdge(Fact from, Fact to) {
             assert to != null;
             this.from = from;
             this.to = to;
@@ -159,11 +159,11 @@ class Graph {
     }
 
     static class HyperEdge {
-        public final CausalityEvent from1;
-        public final CausalityEvent from2;
-        public final CausalityEvent to;
+        public final Fact from1;
+        public final Fact from2;
+        public final Fact to;
 
-        HyperEdge(CausalityEvent from1, CausalityEvent from2, CausalityEvent to) {
+        HyperEdge(Fact from1, Fact from2, Fact to) {
             assert from1 != null;
             assert from2 != null;
             assert to != null;
@@ -280,12 +280,12 @@ class Graph {
             }
         }
 
-        RealFlowNode(TypeFlow<?> f, CausalityEvent containing, TypeState filter) {
+        RealFlowNode(TypeFlow<?> f, Fact containing, TypeState filter) {
             super(customToString(f), containing, filter);
             this.f = f;
         }
 
-        public static RealFlowNode create(PointsToAnalysis bb, TypeFlow<?> f, CausalityEvent containing) {
+        public static RealFlowNode create(PointsToAnalysis bb, TypeFlow<?> f, Fact containing) {
             return new RealFlowNode(f, containing, customFilter(bb, f));
         }
     }
@@ -356,8 +356,8 @@ class Graph {
         }
     }
 
-    private Set<CausalityEvent> collectNodes() {
-        HashSet<CausalityEvent> nodes = new HashSet<>();
+    private Set<Fact> collectNodes() {
+        HashSet<Fact> nodes = new HashSet<>();
 
         for (DirectEdge e : directEdges) {
             if (e.from != null) {
@@ -395,16 +395,16 @@ class Graph {
     }
 
     private Set<Object> collectNeededAbstractNodes() {
-        Set<CausalityEvent> methods = collectNodes();
+        Set<Fact> methods = collectNodes();
         Set<FlowNode> typeflows = collectFlowNodes();
-        Object[] nodes = Stream.concat(Stream.concat(Stream.of((CausalityEvent) null), methods.stream()), typeflows.stream()).toArray();
+        Object[] nodes = Stream.concat(Stream.concat(Stream.of((Fact) null), methods.stream()), typeflows.stream()).toArray();
         HashMap<Object, Integer> nodesInverse = new HashMap<>();
         for (int i = 0; i < nodes.length; i++) {
             nodesInverse.put(nodes[i], i);
         }
 
         BitSet needed = new BitSet(nodes.length);
-        methods.stream().filter(CausalityEvent::essential).map(nodesInverse::get).forEach(needed::set);
+        methods.stream().filter(Fact::essential).map(nodesInverse::get).forEach(needed::set);
 
         collectNodesLeadingSomewhere(needed, makeReverseAdjacency(nodes, typeflows, nodesInverse));
 
@@ -579,18 +579,18 @@ class Graph {
         AnalysisType[] typesSorted = getRelevantTypes(bb, typeIdMap);
 
         var neededAbstractNodes = collectNeededAbstractNodes();
-        CausalityEvent[] methodsSorted = filterType(CausalityEvent.class, neededAbstractNodes.stream())
+        Fact[] methodsSorted = filterType(Fact.class, neededAbstractNodes.stream())
                         .map(reason -> Pair.create(reason.toString(bb.getMetaAccess()), reason))
                         .sorted(Comparator.comparing(Pair::getLeft))
                         .map(Pair::getRight)
-                        .toArray(CausalityEvent[]::new);
+                .toArray(Fact[]::new);
         var neededFlows = filterType(FlowNode.class, neededAbstractNodes.stream()).collect(Collectors.toSet());
         neededFlows.add(null); // Always needed
         interflows.removeIf(e -> !neededFlows.contains(e.from) || !neededFlows.contains(e.to));
         contractTypeflows(bb);
         var flowsSorted = collectFlowNodes().stream().sorted().toArray(FlowNode[]::new);
 
-        HashMap<CausalityEvent, Integer> methodIdMap = inverse(methodsSorted, 1);
+        HashMap<Fact, Integer> methodIdMap = inverse(methodsSorted, 1);
         HashMap<FlowNode, Integer> flowIdMap = inverse(flowsSorted, 1);
 
         if (typesSorted.length > 0xFFFF) {
@@ -647,21 +647,21 @@ class Graph {
 
     private static void writeKinds(OutputStream out) {
         PrintStream w = new PrintStream(out);
-        assert EventKinds.values().length <= 0x100;
-        for (var kind : EventKinds.values()) {
+        assert FactKinds.values().length <= 0x100;
+        for (var kind : FactKinds.values()) {
             w.println(kind.name);
         }
     }
 
-    private static void writeMethodKinds(OutputStream out, CausalityEvent[] methodsSorted) throws IOException {
-        for (CausalityEvent method : methodsSorted) {
+    private static void writeMethodKinds(OutputStream out, Fact[] methodsSorted) throws IOException {
+        for (Fact method : methodsSorted) {
             int kindIndex = method.typeDescriptor().ordinal();
             assert kindIndex <= 0xFF;
             out.write(kindIndex);
         }
     }
 
-    private void writeDirectEdges(OutputStream out, HashMap<CausalityEvent, Integer> methodIdMap) throws IOException {
+    private void writeDirectEdges(OutputStream out, HashMap<Fact, Integer> methodIdMap) throws IOException {
         WritableByteChannel c = Channels.newChannel(out);
         ByteBuffer b = ByteBuffer.allocate(2 * Integer.BYTES);
         b.order(ByteOrder.LITTLE_ENDIAN);
@@ -682,7 +682,7 @@ class Graph {
         }
     }
 
-    private void writeHyperEdges(OutputStream out, HashMap<CausalityEvent, Integer> methodIdMap) throws IOException {
+    private void writeHyperEdges(OutputStream out, HashMap<Fact, Integer> methodIdMap) throws IOException {
         WritableByteChannel c = Channels.newChannel(out);
         ByteBuffer b = ByteBuffer.allocate(3 * Integer.BYTES);
         b.order(ByteOrder.LITTLE_ENDIAN);
@@ -768,12 +768,12 @@ class Graph {
         }
     }
 
-    private static void writeNodeParents(OutputStream out, CausalityEvent[] methodsSorted, AnalysisMetaAccess metaAccess, ReachabilityExport export) throws IOException {
+    private static void writeNodeParents(OutputStream out, Fact[] methodsSorted, AnalysisMetaAccess metaAccess, ReachabilityExport export) throws IOException {
         WritableByteChannel c = Channels.newChannel(out);
         ByteBuffer b = ByteBuffer.allocate(Integer.BYTES);
         b.order(ByteOrder.LITTLE_ENDIAN);
 
-        for (CausalityEvent node : methodsSorted) {
+        for (Fact node : methodsSorted) {
             var hierarchyNode = node.getParent(export, metaAccess);
             int parentId = hierarchyNode == null ? 0 : hierarchyNode.id;
             b.putInt(parentId);
@@ -783,7 +783,7 @@ class Graph {
         }
     }
 
-    private static void writeTypeflowMethods(OutputStream out, FlowNode[] flowsSorted, HashMap<CausalityEvent, Integer> methodIdMap) throws IOException {
+    private static void writeTypeflowMethods(OutputStream out, FlowNode[] flowsSorted, HashMap<Fact, Integer> methodIdMap) throws IOException {
         WritableByteChannel c = Channels.newChannel(out);
         ByteBuffer b = ByteBuffer.allocate(Integer.BYTES);
         b.order(ByteOrder.LITTLE_ENDIAN);
@@ -802,9 +802,9 @@ class Graph {
         }
     }
 
-    private static void writeMethods(PointsToAnalysis bb, OutputStream out, CausalityEvent[] methodsSorted) {
+    private static void writeMethods(PointsToAnalysis bb, OutputStream out, Fact[] methodsSorted) {
         PrintStream w = new PrintStream(out);
-        for (CausalityEvent method : methodsSorted) {
+        for (Fact method : methodsSorted) {
             w.println(method.toString(bb.getMetaAccess()));
         }
     }

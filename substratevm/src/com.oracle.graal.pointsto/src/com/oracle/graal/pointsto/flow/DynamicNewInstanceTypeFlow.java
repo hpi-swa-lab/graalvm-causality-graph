@@ -25,9 +25,9 @@
 package com.oracle.graal.pointsto.flow;
 
 import com.oracle.graal.pointsto.PointsToAnalysis;
-import com.oracle.graal.pointsto.reports.causality.CausalityExport;
 import com.oracle.graal.pointsto.flow.context.AnalysisContext;
 import com.oracle.graal.pointsto.meta.AnalysisType;
+import com.oracle.graal.pointsto.reports.causality.Causality;
 import com.oracle.graal.pointsto.typestate.TypeState;
 
 import jdk.vm.ci.code.BytecodePosition;
@@ -69,7 +69,7 @@ public final class DynamicNewInstanceTypeFlow extends TypeFlow<BytecodePosition>
     @Override
     public void initFlow(PointsToAnalysis bb) {
         this.newTypeFlow.addObserver(bb, this);
-        CausalityExport.registerTypeFlowEdge(newTypeFlow, this);
+        Causality.registerTypeFlowEdge(newTypeFlow, this);
     }
 
     @Override

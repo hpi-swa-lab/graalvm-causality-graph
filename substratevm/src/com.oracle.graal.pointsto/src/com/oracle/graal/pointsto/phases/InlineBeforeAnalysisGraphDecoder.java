@@ -30,9 +30,6 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.concurrent.ConcurrentHashMap;
 
-import com.oracle.graal.pointsto.reports.causality.CausalityExport;
-import com.oracle.graal.pointsto.reports.causality.events.CausalityEvents;
-import jdk.vm.ci.code.BytecodePosition;
 import org.graalvm.collections.EconomicSet;
 
 import com.oracle.graal.pointsto.BigBang;
@@ -40,6 +37,8 @@ import com.oracle.graal.pointsto.flow.AnalysisParsedGraph;
 import com.oracle.graal.pointsto.meta.AnalysisMethod;
 import com.oracle.graal.pointsto.meta.HostedProviders;
 import com.oracle.graal.pointsto.phases.InlineBeforeAnalysisPolicy.AbstractPolicyScope;
+import com.oracle.graal.pointsto.reports.causality.Causality;
+import com.oracle.graal.pointsto.reports.causality.facts.Facts;
 
 import jdk.graal.compiler.bytecode.BytecodeProvider;
 import jdk.graal.compiler.debug.GraalError;
@@ -65,6 +64,7 @@ import jdk.graal.compiler.nodes.util.GraphUtil;
 import jdk.graal.compiler.replacements.PEGraphDecoder;
 import jdk.graal.compiler.replacements.nodes.MethodHandleWithExceptionNode;
 import jdk.graal.compiler.replacements.nodes.ResolvedMethodHandleCallTargetNode;
+import jdk.vm.ci.code.BytecodePosition;
 import jdk.vm.ci.meta.ResolvedJavaMethod;
 
 public class InlineBeforeAnalysisGraphDecoder extends PEGraphDecoder {
@@ -358,12 +358,12 @@ public class InlineBeforeAnalysisGraphDecoder extends PEGraphDecoder {
         // Lies a bit about the inline context, since getCallerNodeSourcePosition() may drop the top
         // frame...
         // But it lies consistent with the NodeSourcePosition as observed in MethodTypeFlowBuilder
-        var callerScopeEvent = CausalityEvents.InlinedMethodCode.create(inlineScope.getCallerNodeSourcePosition()); // createEventForInlinedMethodCode(callerScope);
-        var inlineScopeEvent = CausalityEvents.InlinedMethodCode.create(
+        var callerScopeEvent = Facts.InlinedMethodCode.create(inlineScope.getCallerNodeSourcePosition()); // createEventForInlinedMethodCode(callerScope);
+        var inlineScopeEvent = Facts.InlinedMethodCode.create(
                         new BytecodePosition(inlineScope.getCallerNodeSourcePosition(),
                                         invokeData.callTarget.targetMethod(), jdk.vm.ci.code.BytecodeFrame.UNKNOWN_BCI)); // createEventForInlinedMethodCode(inlineScope);
-        CausalityExport.registerEdge(callerScopeEvent, inlineScopeEvent);
-        try (var ignored = CausalityExport.overwriteCause(callerScopeEvent)) {
+        Causality.registerEdge(callerScopeEvent, inlineScopeEvent);
+        try (var ignored = Causality.overwriteCause(callerScopeEvent)) {
             ((AnalysisMethod) invokeData.callTarget.targetMethod()).registerAsInlined(reason);
         }
 

@@ -51,12 +51,13 @@ import com.oracle.graal.pointsto.infrastructure.OriginalFieldProvider;
 import com.oracle.graal.pointsto.meta.AnalysisField;
 import com.oracle.graal.pointsto.meta.AnalysisMethod;
 import com.oracle.graal.pointsto.meta.AnalysisType;
-import com.oracle.graal.pointsto.reports.causality.events.BuildTimeClassInitialization;
-import com.oracle.graal.pointsto.reports.causality.events.CausalityEvent;
-import com.oracle.graal.pointsto.reports.causality.events.CausalityEvents;
-import com.oracle.graal.pointsto.reports.causality.events.Feature;
-import com.oracle.graal.pointsto.reports.causality.events.ImmutableStackTrace;
-import com.oracle.graal.pointsto.reports.causality.events.InlinedMethodCode;
+import com.oracle.graal.pointsto.reports.causality.facts.BuildTimeClassInitialization;
+import com.oracle.graal.pointsto.reports.causality.facts.Fact;
+import com.oracle.graal.pointsto.reports.causality.facts.Facts;
+import com.oracle.graal.pointsto.reports.causality.facts.Feature;
+import com.oracle.graal.pointsto.reports.causality.facts.ImmutableStackTrace;
+import com.oracle.graal.pointsto.reports.causality.facts.InlinedMethodCode;
+import com.oracle.graal.pointsto.reports.causality.facts.MethodReachable;
 import com.oracle.graal.pointsto.util.AnalysisError;
 
 import jdk.vm.ci.code.BytecodePosition;
@@ -115,7 +116,7 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
     public static class ThreadContext {
         private final Deque<CauseToken> causes = new ArrayDeque<>();
 
-        public CausalityEvent topCause() {
+        public Fact topCause() {
             return causes.isEmpty() ? null : causes.peek().event;
         }
 
@@ -124,18 +125,18 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
         }
 
         private void updateHeapTracing(CauseToken top) {
-            CausalityEvent cause = top == null || top.level == CausalityExport.HeapTracing.None ? null : top.event;
-            boolean recordHeapAssignments = top != null && top.level == CausalityExport.HeapTracing.Full;
+            Fact cause = top == null || top.level == Causality.HeapTracing.None ? null : top.event;
+            boolean recordHeapAssignments = top != null && top.level == Causality.HeapTracing.Full;
             HeapAssignmentTracing.getInstance().setCause(cause, recordHeapAssignments);
         }
 
-        public final class CauseToken implements CausalityExport.NonThrowingAutoCloseable {
-            private final CausalityEvent event;
-            private final CausalityExport.HeapTracing level;
+        public final class CauseToken implements Causality.NonThrowingAutoCloseable {
+            private final Fact event;
+            private final Causality.HeapTracing level;
             public final StackTraceElement site;
             public final int stackDepth;
 
-            private CauseToken(CausalityEvent event, CausalityExport.HeapTracing level, boolean overwriteSilently) {
+            private CauseToken(Fact event, Causality.HeapTracing level, boolean overwriteSilently) {
                 this.event = event;
                 this.level = level;
 
@@ -145,8 +146,8 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
                 this.stackDepth = stackTrace.length - nSkip - 1;
 
                 if (!overwriteSilently && !causes.isEmpty()) {
-                    CausalityEvent top = causes.peek().event;
-                    if (event != null && top != null && top != event && event != CausalityEvents.Ignored && top != CausalityEvents.Ignored && !(top instanceof Feature) && !top.root()) {
+                    Fact top = causes.peek().event;
+                    if (event != null && top != null && top != event && event != Facts.Ignored && top != Facts.Ignored && !(top instanceof Feature) && !top.root()) {
                         throw new RuntimeException("Stacking Rerooting requests!");
                     }
                 }
@@ -174,7 +175,7 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
     }
 
     @Override
-    public void registerConjunctiveEdge(CausalityEvent cause1, CausalityEvent cause2, CausalityEvent consequence) {
+    public void registerConjunctiveEdge(Fact cause1, Fact cause2, Fact consequence) {
         if (cause1 == null) {
             registerEdge(cause2, consequence);
         } else if (cause2 == null) {
@@ -185,7 +186,7 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
     }
 
     @Override
-    public void registerEdge(CausalityEvent cause, CausalityEvent consequence) {
+    public void registerEdge(Fact cause, Fact consequence) {
         if (cause == null || cause.root()) {
             ThreadContext.CauseToken topCauseToken = threadContexts.get().topCauseToken();
             if (topCauseToken != null) {
@@ -198,8 +199,8 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
                 if (cause == consequence) {
                     return;
                 }
-                var causeConnection = CausalityEvents.CauseConnection.create(topCauseToken.site, site);
-                var causeConnectionStack = CausalityEvents.CauseConnectionStack.create(new ImmutableStackTrace(Arrays.copyOfRange(stackTrace, nSkip, stackTrace.length - topCauseToken.stackDepth)));
+                var causeConnection = Facts.CauseConnection.create(topCauseToken.site, site);
+                var causeConnectionStack = Facts.CauseConnectionStack.create(new ImmutableStackTrace(Arrays.copyOfRange(stackTrace, nSkip, stackTrace.length - topCauseToken.stackDepth)));
                 directEdges.put(new Graph.DirectEdge(null, causeConnection), Boolean.TRUE);
                 directEdges.put(new Graph.DirectEdge(causeConnection, causeConnectionStack), Boolean.TRUE);
                 registerConjunctiveEdge(cause, causeConnectionStack, consequence);
@@ -215,56 +216,56 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
         directEdges.put(new Graph.DirectEdge(cause, consequence), Boolean.TRUE);
     }
 
-    private static CausalityEvent getEventForHeapReason(Object customReason, Object o) {
+    private static Fact getEventForHeapReason(Object customReason, Object o) {
         if (customReason == null) {
-            return CausalityEvents.UnknownHeapObject.create(o.getClass());
-        } else if (customReason instanceof CausalityEvent) {
-            return (CausalityEvent) customReason;
+            return Facts.UnknownHeapObject.create(o.getClass());
+        } else if (customReason instanceof Fact) {
+            return (Fact) customReason;
         } else if (customReason instanceof Class<?>) {
-            return CausalityEvents.BuildTimeClassInitialization.create((Class<?>) customReason);
+            return Facts.BuildTimeClassInitialization.create((Class<?>) customReason);
         } else {
             throw AnalysisError.shouldNotReachHere("Heap Assignment Tracing Reason should not be of type " + customReason.getClass().getTypeName());
         }
     }
 
-    private static CausalityEvent getHeapObjectCreator(Object heapObject) {
+    private static Fact getHeapObjectCreator(Object heapObject) {
         Object responsible = HeapAssignmentTracing.getInstance().getResponsibleClass(heapObject);
         return getEventForHeapReason(responsible, heapObject);
     }
 
-    private static CausalityEvent getHeapObjectCreator(BigBang bb, JavaConstant heapObject) {
+    private static Fact getHeapObjectCreator(BigBang bb, JavaConstant heapObject) {
         if (heapObject instanceof ImageHeapConstant imageHeapConstant && !imageHeapConstant.isBackedByHostedObject()) {
             return SimulatedHeapTracing.instance.getHeapObjectCreator(imageHeapConstant);
         }
         return getHeapObjectCreator(asObject(bb, Object.class, heapObject));
     }
 
-    private static CausalityEvent forScanReason(ObjectScanner.ScanReason reason) {
+    private static Fact forScanReason(ObjectScanner.ScanReason reason) {
         if (reason instanceof ObjectScanner.EmbeddedRootScan ers) {
-            return CausalityEvents.InlinedMethodCode.create(ers.getReason() instanceof BytecodePosition pos ? pos : ers.getPosition());
+            return Facts.InlinedMethodCode.create(ers.getReason() instanceof BytecodePosition pos ? pos : ers.getPosition());
         }
         if (reason instanceof ObjectScanner.FieldScan fs) {
-            return CausalityEvents.FieldRead.create(fs.getField());
+            return Facts.FieldRead.create(fs.getField());
         }
         return null;
     }
 
     @Override
-    public void registerEdgeFromHeapObject(BigBang bb, JavaConstant heapObject, ObjectScanner.ScanReason reason, CausalityEvent consequence) {
-        CausalityEvent writerCause = getHeapObjectCreator(bb, heapObject);
-        CausalityEvent readerCause = forScanReason(reason);
+    public void registerEdgeFromHeapObject(BigBang bb, JavaConstant heapObject, ObjectScanner.ScanReason reason, Fact consequence) {
+        Fact writerCause = getHeapObjectCreator(bb, heapObject);
+        Fact readerCause = forScanReason(reason);
         registerConjunctiveEdge(writerCause, readerCause, consequence);
     }
 
     @Override
-    public void registerEdgeFromHeapObject(Object heapObject, ObjectScanner.ScanReason reason, CausalityEvent consequence) {
-        CausalityEvent writerCause = getHeapObjectCreator(heapObject);
-        CausalityEvent readerCause = forScanReason(reason);
+    public void registerEdgeFromHeapObject(Object heapObject, ObjectScanner.ScanReason reason, Fact consequence) {
+        Fact writerCause = getHeapObjectCreator(heapObject);
+        Fact readerCause = forScanReason(reason);
         registerConjunctiveEdge(writerCause, readerCause, consequence);
     }
 
     @Override
-    public CausalityEvent getHeapFieldAssigner(BigBang bb, JavaConstant receiver, AnalysisField field, JavaConstant value) {
+    public Fact getHeapFieldAssigner(BigBang bb, JavaConstant receiver, AnalysisField field, JavaConstant value) {
         Object responsible;
         Object o;
 
@@ -301,7 +302,7 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
     }
 
     @Override
-    public CausalityEvent getHeapArrayAssigner(BigBang bb, JavaConstant array, int elementIndex, JavaConstant value) {
+    public Fact getHeapArrayAssigner(BigBang bb, JavaConstant array, int elementIndex, JavaConstant value) {
         if (array instanceof ImageHeapObjectArray imageHeapArray && !imageHeapArray.isBackedByHostedObject()) {
             return SimulatedHeapTracing.instance.getHeapArrayAssigner(imageHeapArray, elementIndex, value);
         }
@@ -318,16 +319,16 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
     }
 
     @Override
-    public CausalityEvent getCause() {
+    public Fact getCause() {
         return threadContexts.get().topCause();
     }
 
     @Override
-    protected CausalityExport.NonThrowingAutoCloseable setCause(CausalityEvent event, CausalityExport.HeapTracing level, boolean overwriteSilently) {
+    protected Causality.NonThrowingAutoCloseable setCause(Fact event, Causality.HeapTracing level, boolean overwriteSilently) {
         return threadContexts.get().new CauseToken(event, level, overwriteSilently);
     }
 
-    protected void forEachEvent(Consumer<CausalityEvent> callback) {
+    protected void forEachEvent(Consumer<Fact> callback) {
         for (var e : directEdges.keySet()) {
             callback.accept(e.from);
             callback.accept(e.to);
@@ -359,11 +360,11 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
         var hyperEdges = this.hyperEdges.keySet();
 
         directEdges.removeIf(pair -> pair.from != null && pair.from.unused() || pair.to.unused());
-        directEdges.removeIf(pair -> pair.to instanceof com.oracle.graal.pointsto.reports.causality.events.MethodReachable mr && mr.method.isClassInitializer());
+        directEdges.removeIf(pair -> pair.to instanceof MethodReachable mr && mr.method.isClassInitializer());
 
-        HashSet<CausalityEvent> rootEvents = new HashSet<>();
-        Set<com.oracle.graal.pointsto.reports.causality.events.BuildTimeClassInitialization> initialBuildTimeClinits = new HashSet<>();
-        HashSet<com.oracle.graal.pointsto.reports.causality.events.InlinedMethodCode> allCodeEvents = new HashSet<>();
+        HashSet<Fact> rootEvents = new HashSet<>();
+        Set<BuildTimeClassInitialization> initialBuildTimeClinits = new HashSet<>();
+        HashSet<InlinedMethodCode> allCodeEvents = new HashSet<>();
         forEachEvent(e -> {
             if (e != null && e.root() && !e.unused()) {
                 rootEvents.add(e);
@@ -388,7 +389,7 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
 
             AnalysisMethod classInitializer = t.getClassInitializer();
             if (classInitializer != null && classInitializer.isImplementationInvoked()) {
-                g.add(new Graph.DirectEdge(CausalityEvents.TypeReachable.create(t), CausalityEvents.MethodReachable.create(classInitializer)));
+                g.add(new Graph.DirectEdge(Facts.TypeReachable.create(t), Facts.MethodReachable.create(classInitializer)));
             }
         }
 
@@ -403,7 +404,7 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
                         g);
 
         for (var e : allCodeEvents) {
-            g.add(new Graph.DirectEdge(e, CausalityEvents.MethodGraphParsed.create(e.context[0])));
+            g.add(new Graph.DirectEdge(e, Facts.MethodGraphParsed.create(e.context[0])));
         }
 
         for (Graph.HyperEdge andEdge : hyperEdges) {
@@ -431,10 +432,10 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
                 }
                 buildTimeClinitsWithReason.add(init);
                 if (outerInitReason instanceof Class<?> outerInitClass) {
-                    outerInit = (BuildTimeClassInitialization) CausalityEvents.BuildTimeClassInitialization.create(outerInitClass);
+                    outerInit = (BuildTimeClassInitialization) Facts.BuildTimeClassInitialization.create(outerInitClass);
                     g.add(new Graph.DirectEdge(outerInit, init));
                 } else {
-                    g.add(new Graph.DirectEdge((CausalityEvent) outerInitReason, init));
+                    g.add(new Graph.DirectEdge((Fact) outerInitReason, init));
                     break;
                 }
             }
@@ -449,7 +450,7 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
             }
 
             if (t != null && t.isReachable()) {
-                CausalityEvent tReachable = CausalityEvents.TypeReachable.create(t);
+                Fact tReachable = Facts.TypeReachable.create(t);
                 g.add(new Graph.DirectEdge(tReachable, init));
             } else if (!buildTimeClinitsWithReason.contains(init)) {
                 g.add(new Graph.DirectEdge(null, init));

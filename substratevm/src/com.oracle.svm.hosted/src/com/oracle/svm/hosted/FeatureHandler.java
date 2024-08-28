@@ -37,12 +37,12 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import com.oracle.graal.pointsto.reports.causality.CausalityExport;
-import com.oracle.graal.pointsto.reports.causality.events.CausalityEvents;
 import org.graalvm.nativeimage.ImageSingletons;
 import org.graalvm.nativeimage.hosted.Feature;
 
 import com.oracle.graal.pointsto.reports.ReportUtils;
+import com.oracle.graal.pointsto.reports.causality.Causality;
+import com.oracle.graal.pointsto.reports.causality.facts.Facts;
 import com.oracle.svm.core.ClassLoaderSupport;
 import com.oracle.svm.core.SubstrateOptions;
 import com.oracle.svm.core.annotate.AutomaticFeature;
@@ -50,8 +50,8 @@ import com.oracle.svm.core.feature.AutomaticallyRegisteredFeature;
 import com.oracle.svm.core.feature.AutomaticallyRegisteredFeatureServiceRegistration;
 import com.oracle.svm.core.feature.InternalFeature;
 import com.oracle.svm.core.option.APIOption;
-import com.oracle.svm.core.option.HostedOptionKey;
 import com.oracle.svm.core.option.AccumulatingLocatableMultiOptionValue;
+import com.oracle.svm.core.option.HostedOptionKey;
 import com.oracle.svm.core.option.SubstrateOptionsParser;
 import com.oracle.svm.core.util.InterruptImageBuilding;
 import com.oracle.svm.core.util.UserError;
@@ -181,7 +181,7 @@ public class FeatureHandler {
         Function<Class<?>, Class<?>> specificClassProvider = specificAutomaticFeatures::get;
 
         for (Class<?> featureClass : automaticFeatures) {
-            try (var ignored = CausalityExport.setCause(CausalityEvents.AutomaticFeatureRegistration)) {
+            try (var ignored = Causality.setCause(Facts.AutomaticFeatureRegistration)) {
                 registerFeature(featureClass, specificClassProvider, access);
             }
         }
@@ -193,7 +193,7 @@ public class FeatureHandler {
             } catch (ClassNotFoundException e) {
                 throw UserError.abort("Feature %s class not found on the classpath. Ensure that the name is correct and that the class is on the classpath.", featureName);
             }
-            try (var ignored = CausalityExport.setCause(CausalityEvents.UserEnabledFeatureRegistration)) {
+            try (var ignored = Causality.setCause(Facts.UserEnabledFeatureRegistration)) {
                 registerFeature(featureClass, specificClassProvider, access);
             }
         }
@@ -218,7 +218,7 @@ public class FeatureHandler {
 
         if (registeredFeatures.contains(baseFeatureClass)) {
             if (ImageSingletons.contains(baseFeatureClass)) {
-                CausalityExport.registerEvent(CausalityEvents.Feature.create(ImageSingletons.lookup((Class<Feature>) baseFeatureClass)));
+                Causality.registerEvent(Facts.Feature.create(ImageSingletons.lookup((Class<Feature>) baseFeatureClass)));
             }
             return;
         }
@@ -262,12 +262,12 @@ public class FeatureHandler {
             throw handleFeatureError(feature, t);
         }
         for (Class<? extends Feature> requiredFeatureClass : requiredFeatures) {
-            try (var ignored = CausalityExport.overwriteCause(CausalityEvents.Feature.create(feature))) {
+            try (var ignored = Causality.overwriteCause(Facts.Feature.create(feature))) {
                 registerFeature(requiredFeatureClass, specificClassProvider, access);
             }
         }
 
-        CausalityExport.registerEvent(CausalityEvents.Feature.create(feature));
+        Causality.registerEvent(Facts.Feature.create(feature));
         featureInstances.add(feature);
     }
 

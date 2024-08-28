@@ -44,7 +44,7 @@ import org.graalvm.nativeimage.hosted.FieldValueTransformer;
 import com.oracle.graal.pointsto.infrastructure.OriginalFieldProvider;
 import com.oracle.graal.pointsto.meta.AnalysisField;
 import com.oracle.graal.pointsto.meta.AnalysisMetaAccess;
-import com.oracle.graal.pointsto.reports.causality.CausalityExport;
+import com.oracle.graal.pointsto.reports.causality.Causality;
 import com.oracle.graal.pointsto.util.GraalAccess;
 import com.oracle.svm.core.BuildPhaseProvider;
 import com.oracle.svm.core.StaticFieldsSupport;
@@ -325,7 +325,7 @@ public final class ComputedValueField extends FieldValueTransformation implement
                 result = translateFieldOffset(classInitializationSupport, receiver, targetClass);
                 break;
             case Custom:
-                try (var ignored = CausalityExport.resetCause()) {
+                try (var ignored = Causality.resetCause()) {
                     result = super.computeValue(classInitializationSupport, field, receiver);
                 }
                 break;

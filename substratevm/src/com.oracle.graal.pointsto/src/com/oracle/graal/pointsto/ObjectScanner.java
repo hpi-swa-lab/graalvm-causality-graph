@@ -34,8 +34,6 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import com.oracle.graal.pointsto.reports.causality.CausalityExport;
-import com.oracle.graal.pointsto.reports.causality.events.CausalityEvents;
 import org.graalvm.word.WordBase;
 
 import com.oracle.graal.pointsto.constraints.UnsupportedFeatureException;
@@ -47,6 +45,8 @@ import com.oracle.graal.pointsto.meta.AnalysisField;
 import com.oracle.graal.pointsto.meta.AnalysisMethod;
 import com.oracle.graal.pointsto.meta.AnalysisType;
 import com.oracle.graal.pointsto.reports.ReportUtils;
+import com.oracle.graal.pointsto.reports.causality.Causality;
+import com.oracle.graal.pointsto.reports.causality.facts.Facts;
 import com.oracle.graal.pointsto.util.AnalysisError;
 import com.oracle.graal.pointsto.util.CompletionExecutor;
 
@@ -441,9 +441,9 @@ public class ObjectScanner {
     private void doScan(WorklistEntry entry) {
         try {
             AnalysisType type = bb.getMetaAccess().lookupJavaType(entry.constant);
-            var inHeap = CausalityEvents.TypeInHeap.create(type);
-            CausalityExport.registerEdgeFromHeapObject(bb, entry.constant, entry.reason, inHeap);
-            try (var ignored = CausalityExport.setCause(inHeap)) {
+            var inHeap = Facts.TypeInHeap.create(type);
+            Causality.registerEdgeFromHeapObject(bb, entry.constant, entry.reason, inHeap);
+            try (var ignored = Causality.setCause(inHeap)) {
                 type.registerAsReachable(entry.reason);
             }
 

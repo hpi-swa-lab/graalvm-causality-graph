@@ -31,8 +31,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
-import com.oracle.graal.pointsto.reports.causality.CausalityExport;
-import com.oracle.graal.pointsto.reports.causality.events.CausalityEvents;
 import org.graalvm.nativeimage.ImageSingletons;
 
 import com.oracle.graal.pointsto.meta.AnalysisElement;
@@ -42,9 +40,11 @@ import com.oracle.graal.pointsto.meta.AnalysisElement.SubtypeReachableNotificati
 import com.oracle.graal.pointsto.meta.AnalysisMetaAccess;
 import com.oracle.graal.pointsto.meta.AnalysisMethod;
 import com.oracle.graal.pointsto.meta.AnalysisType;
+import com.oracle.graal.pointsto.reports.causality.Causality;
+import com.oracle.graal.pointsto.reports.causality.facts.Facts;
 import com.oracle.svm.core.SubstrateOptions;
-import com.oracle.svm.core.feature.InternalFeature;
 import com.oracle.svm.core.feature.AutomaticallyRegisteredFeature;
+import com.oracle.svm.core.feature.InternalFeature;
 import com.oracle.svm.core.util.UserError;
 import com.oracle.svm.hosted.FeatureImpl.BeforeAnalysisAccessImpl;
 
@@ -68,7 +68,7 @@ public class ConcurrentReachabilityHandler extends ReachabilityHandler implement
         AnalysisMethod baseAnalysisMethod = metaAccess.lookupJavaMethod(baseMethod);
 
         MethodOverrideReachableNotification notification = new MethodOverrideReachableNotification(callback);
-        CausalityExport.registerEvent(CausalityEvents.OverrideReachableNotificationCallback.create(callback));
+        Causality.registerEvent(Facts.OverrideReachableNotificationCallback.create(callback));
         baseAnalysisMethod.registerOverrideReachabilityNotification(notification);
 
         /*
@@ -86,7 +86,7 @@ public class ConcurrentReachabilityHandler extends ReachabilityHandler implement
         AnalysisType baseType = metaAccess.lookupJavaType(baseClass);
 
         SubtypeReachableNotification notification = new SubtypeReachableNotification(callback);
-        CausalityExport.registerEvent(CausalityEvents.SubtypeReachableNotificationCallback.create(callback));
+        Causality.registerEvent(Facts.SubtypeReachableNotificationCallback.create(callback));
         baseType.registerSubtypeReachabilityNotification(notification);
 
         /*

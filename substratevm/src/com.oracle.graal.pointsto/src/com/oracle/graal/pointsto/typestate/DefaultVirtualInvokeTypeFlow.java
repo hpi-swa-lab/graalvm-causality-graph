@@ -29,7 +29,6 @@ import java.util.Collection;
 import java.util.Collections;
 
 import com.oracle.graal.pointsto.PointsToAnalysis;
-import com.oracle.graal.pointsto.reports.causality.CausalityExport;
 import com.oracle.graal.pointsto.constraints.UnsupportedFeatureException;
 import com.oracle.graal.pointsto.flow.AbstractVirtualInvokeTypeFlow;
 import com.oracle.graal.pointsto.flow.ActualReturnTypeFlow;
@@ -39,6 +38,7 @@ import com.oracle.graal.pointsto.flow.TypeFlow;
 import com.oracle.graal.pointsto.meta.AnalysisMethod;
 import com.oracle.graal.pointsto.meta.AnalysisType;
 import com.oracle.graal.pointsto.meta.PointsToAnalysisMethod;
+import com.oracle.graal.pointsto.reports.causality.Causality;
 import com.oracle.svm.common.meta.MultiMethod.MultiMethodKey;
 
 import jdk.vm.ci.code.BytecodePosition;
@@ -53,7 +53,7 @@ final class DefaultVirtualInvokeTypeFlow extends AbstractVirtualInvokeTypeFlow {
     DefaultVirtualInvokeTypeFlow(BytecodePosition invokeLocation, AnalysisType receiverType, PointsToAnalysisMethod targetMethod,
                     TypeFlow<?>[] actualParameters, ActualReturnTypeFlow actualReturn, MultiMethodKey callerMultiMethodKey) {
         super(invokeLocation, receiverType, targetMethod, actualParameters, actualReturn, callerMultiMethodKey);
-        CausalityExport.addVirtualInvokeTypeFlow(this);
+        Causality.addVirtualInvokeTypeFlow(this);
     }
 
     @Override
@@ -126,7 +126,7 @@ final class DefaultVirtualInvokeTypeFlow extends AbstractVirtualInvokeTypeFlow {
                     linkCallee(bb, false, calleeFlows);
                 }
 
-                CausalityExport.registerVirtualInvocation(bb, this, calleeFlows.getMethod(), type);
+                Causality.registerVirtualInvocation(bb, this, calleeFlows.getMethod(), type);
                 updateReceiver(bb, calleeFlows, TypeState.forExactType(bb, type, false));
             }
         }

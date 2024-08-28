@@ -42,8 +42,6 @@ import java.util.concurrent.atomic.AtomicLongArray;
 import java.util.function.Consumer;
 import java.util.stream.StreamSupport;
 
-import com.oracle.graal.pointsto.reports.causality.events.CausalityEvents;
-import com.oracle.graal.pointsto.reports.causality.CausalityExport;
 import com.oracle.graal.pointsto.api.HostVM;
 import com.oracle.graal.pointsto.api.PointstoOptions;
 import com.oracle.graal.pointsto.constraints.UnsupportedFeatures;
@@ -67,6 +65,8 @@ import com.oracle.graal.pointsto.meta.AnalysisUniverse;
 import com.oracle.graal.pointsto.meta.PointsToAnalysisField;
 import com.oracle.graal.pointsto.meta.PointsToAnalysisMethod;
 import com.oracle.graal.pointsto.reports.StatisticsPrinter;
+import com.oracle.graal.pointsto.reports.causality.Causality;
+import com.oracle.graal.pointsto.reports.causality.facts.Facts;
 import com.oracle.graal.pointsto.typestate.AnyPrimitiveTypeState;
 import com.oracle.graal.pointsto.typestate.PointsToStats;
 import com.oracle.graal.pointsto.typestate.TypeState;
@@ -344,7 +344,7 @@ public abstract class PointsToAnalysis extends AbstractAnalysisEngine {
         int paramCount = aMethod.getSignature().getParameterCount(!isStatic);
         PointsToAnalysisMethod originalPTAMethod = assertPointsToAnalysisMethod(aMethod);
 
-        CausalityExport.registerEvent(CausalityEvents.RootMethodRegistration.create(aMethod));
+        Causality.registerEvent(Facts.RootMethodRegistration.create(aMethod));
 
         if (isStatic) {
             /*
@@ -353,7 +353,7 @@ public abstract class PointsToAnalysis extends AbstractAnalysisEngine {
              * initialized with the corresponding parameter declared type.
              */
             Consumer<PointsToAnalysisMethod> triggerStaticMethodFlow = (pointsToMethod) -> {
-                CausalityExport.registerEvent(CausalityEvents.MethodImplementationInvoked.create(pointsToMethod));
+                Causality.registerEvent(Facts.MethodImplementationInvoked.create(pointsToMethod));
                 postTask(() -> {
                     pointsToMethod.registerAsDirectRootMethod(reason);
                     pointsToMethod.registerAsImplementationInvoked(reason.toString());
@@ -397,7 +397,7 @@ public abstract class PointsToAnalysis extends AbstractAnalysisEngine {
              * will be done during callee resolution.
              */
             if (invokeSpecial) {
-                CausalityExport.registerEvent(CausalityEvents.MethodReachable.create(originalPTAMethod));
+                Causality.registerEvent(Facts.MethodReachable.create(originalPTAMethod));
             }
             postTask(() -> {
                 if (invokeSpecial) {

@@ -51,10 +51,10 @@ import com.oracle.graal.pointsto.meta.AnalysisField;
 import com.oracle.graal.pointsto.meta.AnalysisMetaAccess;
 import com.oracle.graal.pointsto.meta.AnalysisType;
 import com.oracle.graal.pointsto.meta.AnalysisUniverse;
-import com.oracle.graal.pointsto.reports.causality.CausalityExport;
-import com.oracle.graal.pointsto.reports.causality.events.CausalityEvent;
-import com.oracle.graal.pointsto.reports.causality.events.CausalityEvents;
-import com.oracle.graal.pointsto.reports.causality.events.UnknownHeapObject;
+import com.oracle.graal.pointsto.reports.causality.Causality;
+import com.oracle.graal.pointsto.reports.causality.facts.Fact;
+import com.oracle.graal.pointsto.reports.causality.facts.Facts;
+import com.oracle.graal.pointsto.reports.causality.facts.UnknownHeapObject;
 import com.oracle.graal.pointsto.util.AnalysisError;
 import com.oracle.graal.pointsto.util.AnalysisFuture;
 import com.oracle.graal.pointsto.util.CompletionExecutor;
@@ -126,7 +126,7 @@ public abstract class ImageHeapScanner {
         if (isNonNullObjectConstant(root)) {
             EmbeddedRootScan reason = new EmbeddedRootScan(position, root);
             ImageHeapConstant value;
-            try (var ignored = CausalityExport.resetCause()) {
+            try (var ignored = Causality.resetCause()) {
                 value = getOrCreateImageHeapConstant(root, reason);
             }
             markReachable(value, reason);
@@ -136,7 +136,7 @@ public abstract class ImageHeapScanner {
     @SuppressWarnings("try")
     public void onFieldRead(AnalysisField field) {
         assert field.isRead() : field;
-        try (var ignored = CausalityExport.resetCause()) {
+        try (var ignored = Causality.resetCause()) {
             /* Check if the value is available before accessing it. */
             AnalysisType declaringClass = field.getDeclaringClass();
         if (field.isStatic()) {FieldScan reason = new FieldScan(field);
@@ -340,7 +340,7 @@ public abstract class ImageHeapScanner {
         /* Read hosted array element values only when the array is initialized. */
         array.constantData.hostedValuesReader = new AnalysisFuture<>(() -> {
             checkSealed(reason, "Trying to materialize an ImageHeapObjectArray for %s after the ImageHeapScanner is sealed.", constant);
-            try (var ignored = CausalityExport.setCause(CausalityEvents.Ignored)) { // TODO
+            try (var ignored = Causality.setCause(Facts.Ignored)) { // TODO
                 type.registerAsReachable(reason);
             }
             ScanReason arrayReason = new ArrayScan(type, array, reason);
@@ -379,30 +379,30 @@ public abstract class ImageHeapScanner {
             /* If this is a Class constant register the corresponding type as reachable. */
             AnalysisType typeFromClassConstant = (AnalysisType) constantReflection.asJavaType(instance);
             if (typeFromClassConstant != null) {
-                CausalityEvent cause = null;
+                Fact cause = null;
                 if (reason instanceof FieldScan fs) {
-                    cause = CausalityExport.getHeapFieldAssigner(bb, fs.getConstant(), fs.getField(), constant);
+                    cause = Causality.getHeapFieldAssigner(bb, fs.getConstant(), fs.getField(), constant);
                 } else if (reason instanceof ArrayScan as) {
-                    cause = CausalityExport.getHeapArrayAssigner(bb, as.getConstant(), as.getIndex(), constant);
+                    cause = Causality.getHeapArrayAssigner(bb, as.getConstant(), as.getIndex(), constant);
                 }
 
                 if (cause == null || cause instanceof UnknownHeapObject) {
                     // Objects created by the analysis itself would add too many types as roots...
-                    cause = CausalityEvents.Ignored;
+                    cause = Facts.Ignored;
                 }
-                
-                CausalityEvent typeObjectInHeap = (snippetReflection.asObject(Object.class, constant) instanceof Class<?> ? CausalityEvents.HeapObjectClass : CausalityEvents.HeapObjectDynamicHub)
-                        .create(typeFromClassConstant.getJavaClass());
-                CausalityExport.registerEdge(cause, typeObjectInHeap);
 
-                try (var ignored = CausalityExport.setCause(typeObjectInHeap)) {
+                Fact typeObjectInHeap = (snippetReflection.asObject(Object.class, constant) instanceof Class<?> ? Facts.HeapObjectClass : Facts.HeapObjectDynamicHub)
+                        .create(typeFromClassConstant.getJavaClass());
+                Causality.registerEdge(cause, typeObjectInHeap);
+
+                try (var ignored = Causality.setCause(typeObjectInHeap)) {
                     typeFromClassConstant.registerAsReachable(reason);
                 }
             }
             /* We are about to query the type's fields, the type must be marked as reachable. */
-            var inHeap = CausalityEvents.TypeInHeap.create(type);
-        CausalityExport.registerEdgeFromHeapObject(bb, constant, reason, inHeap);
-        try (var ignored = CausalityExport.setCause(inHeap)) {
+            var inHeap = Facts.TypeInHeap.create(type);
+            Causality.registerEdgeFromHeapObject(bb, constant, reason, inHeap);
+            try (var ignored = Causality.setCause(inHeap)) {
             type.registerAsReachable(reason);
         }
             ResolvedJavaField[] instanceFields = type.getInstanceFields(true);
@@ -620,9 +620,9 @@ public abstract class ImageHeapScanner {
         /* Simulated constants don't have a backing object and don't need to be processed. */
         if (object != null) {
             try {
-                var inHeap = CausalityEvents.TypeInHeap.create(objectType);
-                CausalityExport.registerEdgeFromHeapObject(bb, imageHeapConstant, reason, inHeap);
-                try (var ignored = CausalityExport.setCause(inHeap)) {
+                var inHeap = Facts.TypeInHeap.create(objectType);
+                Causality.registerEdgeFromHeapObject(bb, imageHeapConstant, reason, inHeap);
+                try (var ignored = Causality.setCause(inHeap)) {
                     type.notifyObjectReachable(universe.getConcurrentAnalysisAccess(), object, reason);
                 }
             } catch (UnsupportedFeatureException e) {
@@ -633,9 +633,9 @@ public abstract class ImageHeapScanner {
             }
         }
 
-        var inHeap = CausalityEvents.TypeInHeap.create(objectType);
-        CausalityExport.registerEdgeFromHeapObject(bb, imageHeapConstant, reason, inHeap);
-        try (var ignored = CausalityExport.setCause(inHeap)) {
+        var inHeap = Facts.TypeInHeap.create(objectType);
+        Causality.registerEdgeFromHeapObject(bb, imageHeapConstant, reason, inHeap);
+        try (var ignored = Causality.setCause(inHeap)) {
             markTypeInstantiated(objectType, reason);
         }
         if (imageHeapConstant instanceof ImageHeapObjectArray imageHeapArray) {
@@ -813,7 +813,7 @@ public abstract class ImageHeapScanner {
      */
     @SuppressWarnings("try")
     public void rescanObject(Object object) {
-        try (var ignored = CausalityExport.resetCause()) {
+        try (var ignored = Causality.resetCause()) {
             rescanObject(object, OtherReason.RESCAN);
         }
     }
@@ -910,7 +910,7 @@ public abstract class ImageHeapScanner {
      */
     @SuppressWarnings("try")
     private void maybeRunInExecutor(CompletionExecutor.DebugContextRunnable task) {
-        try (var ignored = CausalityExport.resetCause()) {
+        try (var ignored = Causality.resetCause()) {
             if (bb.executorIsStarted()) {
                 bb.postTask(task);
             } else {

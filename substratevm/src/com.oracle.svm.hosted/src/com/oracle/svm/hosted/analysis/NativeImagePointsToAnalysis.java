@@ -31,8 +31,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Stream;
 
-import com.oracle.graal.pointsto.reports.causality.CausalityExport;
-import com.oracle.graal.pointsto.reports.causality.events.CausalityEvents;
 import com.oracle.graal.pointsto.ClassInclusionPolicy;
 import com.oracle.graal.pointsto.PointsToAnalysis;
 import com.oracle.graal.pointsto.constraints.UnsupportedFeatures;
@@ -45,6 +43,8 @@ import com.oracle.graal.pointsto.meta.AnalysisMethod;
 import com.oracle.graal.pointsto.meta.AnalysisType;
 import com.oracle.graal.pointsto.meta.AnalysisUniverse;
 import com.oracle.graal.pointsto.meta.PointsToAnalysisMethod;
+import com.oracle.graal.pointsto.reports.causality.Causality;
+import com.oracle.graal.pointsto.reports.causality.facts.Facts;
 import com.oracle.graal.pointsto.util.TimerCollection;
 import com.oracle.svm.core.SubstrateOptions;
 import com.oracle.svm.hosted.HostedConfiguration;
@@ -155,7 +155,7 @@ public class NativeImagePointsToAnalysis extends PointsToAnalysis implements Inf
     @Override
     @SuppressWarnings("try")
     public void initializeMetaData(AnalysisType type) {
-        try (var ignored = CausalityExport.setCause(CausalityEvents.TypeReachable.create(type), CausalityExport.HeapTracing.None)) {
+        try (var ignored = Causality.setCause(Facts.TypeReachable.create(type), Causality.HeapTracing.None)) {
             dynamicHubInitializer.initializeMetaData(universe.getHeapScanner(), type);
         }
     }

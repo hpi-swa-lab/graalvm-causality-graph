@@ -63,9 +63,9 @@ import com.oracle.graal.pointsto.meta.AnalysisField;
 import com.oracle.graal.pointsto.meta.AnalysisMethod;
 import com.oracle.graal.pointsto.meta.AnalysisType;
 import com.oracle.graal.pointsto.meta.AnalysisUniverse;
+import com.oracle.graal.pointsto.reports.causality.Causality;
+import com.oracle.graal.pointsto.reports.causality.facts.Facts;
 import com.oracle.svm.core.SubstrateOptions;
-import com.oracle.graal.pointsto.reports.causality.CausalityExport;
-import com.oracle.graal.pointsto.reports.causality.events.CausalityEvents;
 import com.oracle.svm.core.config.ObjectLayout;
 import com.oracle.svm.core.configure.ConfigurationConditionResolver;
 import com.oracle.svm.core.configure.ConfigurationFile;
@@ -227,7 +227,7 @@ public class JNIAccessFeature implements Feature {
             Objects.requireNonNull(clazz, () -> nullErrorMessage("class"));
             abortIfSealed();
             registerConditionalConfiguration(condition, (cnd) -> {
-                CausalityExport.registerEvent(CausalityEvents.JNIRegistration.create(clazz));
+                Causality.registerEvent(Facts.JNIRegistration.create(clazz));
                 newClasses.add(clazz);
             });
         }
@@ -239,7 +239,7 @@ public class JNIAccessFeature implements Feature {
             if (!queriedOnly) {
                 registerConditionalConfiguration(condition, (cnd) -> {
                     for (Executable m : executables) {
-                        CausalityExport.registerEvent(CausalityEvents.JNIRegistration.create(m));
+                        Causality.registerEvent(Facts.JNIRegistration.create(m));
                     }
                     newMethods.addAll(Arrays.asList(executables));
                 });
@@ -255,7 +255,7 @@ public class JNIAccessFeature implements Feature {
 
         private void registerFields(boolean finalIsWritable, Field[] fields) {
             for (Field field : fields) {
-                CausalityExport.registerEvent(CausalityEvents.JNIRegistration.create(field));
+                Causality.registerEvent(Facts.JNIRegistration.create(field));
                 boolean writable = finalIsWritable || !Modifier.isFinal(field.getModifiers());
                 newFields.put(field, writable);
             }
@@ -372,7 +372,7 @@ public class JNIAccessFeature implements Feature {
         }
 
         for (Class<?> clazz : newClasses) {
-            try (var ignored = CausalityExport.setCause(CausalityEvents.JNIRegistration.create(clazz))) {
+            try (var ignored = Causality.setCause(Facts.JNIRegistration.create(clazz))) {
                 addClass(clazz, access);
             }
         }
@@ -384,7 +384,7 @@ public class JNIAccessFeature implements Feature {
         newNegativeClassLookups.clear();
 
         for (Executable method : newMethods) {
-            try (var ignored = CausalityExport.setCause(CausalityEvents.JNIRegistration.create(method))) {
+            try (var ignored = Causality.setCause(Facts.JNIRegistration.create(method))) {
                 addMethod(method, access);
             }
         }
@@ -398,7 +398,7 @@ public class JNIAccessFeature implements Feature {
         newNegativeMethodLookups.clear();
 
         newFields.forEach((field, writable) -> {
-            try (var ignored = CausalityExport.setCause(CausalityEvents.JNIRegistration.create(field))) {
+            try (var ignored = Causality.setCause(Facts.JNIRegistration.create(field))) {
                 addField(field, writable, access);
             }
         });
@@ -494,9 +494,9 @@ public class JNIAccessFeature implements Feature {
     @SuppressWarnings("try")
     private JNIJavaCallVariantWrapperGroup createJavaCallVariantWrappers(DuringAnalysisAccessImpl access, ResolvedSignature<ResolvedJavaType> wrapperSignature, boolean nonVirtual) {
         var map = nonVirtual ? nonvirtualCallVariantWrappers : callVariantWrappers;
-        CausalityExport.registerEvent(CausalityEvents.JniCallVariantWrapper.create(wrapperSignature, !nonVirtual));
+        Causality.registerEvent(Facts.JniCallVariantWrapper.create(wrapperSignature, !nonVirtual));
         return map.computeIfAbsent(wrapperSignature, signature -> {
-            try (var ignored = CausalityExport.overwriteCause(CausalityEvents.JniCallVariantWrapper.create(wrapperSignature, !nonVirtual))) {
+            try (var ignored = Causality.overwriteCause(Facts.JniCallVariantWrapper.create(wrapperSignature, !nonVirtual))) {
                 MetaAccessProvider originalMetaAccess = access.getUniverse().getOriginalMetaAccess();
                 WordTypes wordTypes = access.getBigBang().getWordTypes();
                 var varargs = new JNIJavaCallVariantWrapperMethod(signature, CallVariant.VARARGS, nonVirtual, originalMetaAccess, wordTypes);

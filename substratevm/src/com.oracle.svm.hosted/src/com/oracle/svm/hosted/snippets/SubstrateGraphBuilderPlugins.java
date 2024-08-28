@@ -38,8 +38,6 @@ import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.stream.Stream;
 
-import com.oracle.graal.pointsto.reports.causality.CausalityExport;
-import com.oracle.graal.pointsto.reports.causality.events.CausalityEvents;
 import org.graalvm.nativeimage.AnnotationAccess;
 import org.graalvm.nativeimage.ImageInfo;
 import org.graalvm.nativeimage.ImageSingletons;
@@ -57,6 +55,8 @@ import org.graalvm.word.UnsignedWord;
 import com.oracle.graal.pointsto.AbstractAnalysisEngine;
 import com.oracle.graal.pointsto.infrastructure.OriginalClassProvider;
 import com.oracle.graal.pointsto.meta.AnalysisType;
+import com.oracle.graal.pointsto.reports.causality.Causality;
+import com.oracle.graal.pointsto.reports.causality.facts.Facts;
 import com.oracle.svm.core.FrameAccess;
 import com.oracle.svm.core.MissingRegistrationSupport;
 import com.oracle.svm.core.NeverInline;
@@ -918,7 +918,7 @@ public class SubstrateGraphBuilderPlugins {
                     AnalysisType type = (AnalysisType) b.getMetaAccess().lookupJavaType(clazz);
                     for (int i = 0; i < dimensionCount && type.getArrayDimension() < 255; i++) {
                         type = type.getArrayClass();
-                        try (var ignored = CausalityExport.setCause(CausalityEvents.InlinedMethodCode.create(AbstractAnalysisEngine.sourcePosition(clazzNode)))) {
+                        try (var ignored = Causality.setCause(Facts.InlinedMethodCode.create(AbstractAnalysisEngine.sourcePosition(clazzNode)))) {
                             type.registerAsInstantiated(AbstractAnalysisEngine.sourcePosition(clazzNode));
                         }
                     }
