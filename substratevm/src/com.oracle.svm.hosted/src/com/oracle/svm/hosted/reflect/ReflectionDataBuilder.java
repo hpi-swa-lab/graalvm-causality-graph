@@ -81,6 +81,7 @@ import com.oracle.graal.pointsto.meta.AnalysisMethod;
 import com.oracle.graal.pointsto.meta.AnalysisType;
 import com.oracle.graal.pointsto.meta.AnalysisUniverse;
 import com.oracle.graal.pointsto.reports.causality.CausalityExport;
+import com.oracle.graal.pointsto.reports.causality.events.CausalityEvent;
 import com.oracle.graal.pointsto.reports.causality.events.CausalityEvents;
 import com.oracle.svm.core.MissingRegistrationUtils;
 import com.oracle.svm.core.configure.ConditionalRuntimeValue;
@@ -169,9 +170,11 @@ public class ReflectionDataBuilder extends ConditionalConfigurationRegistry impl
         this.metaAccess = analysisMetaAccess;
         this.universe = analysisUniverse;
         for (var conditionalTask : pendingConditionalTasks) {
-            try (var ignored = CausalityExport.overwriteCause(CausalityEvents.DeferredTask.create(conditionalTask))) {
-                registerConditionalConfiguration(conditionalTask.condition, (cnd) -> universe.getBigbang().postTask(debug -> conditionalTask.task.accept(cnd)));
-            }
+            registerConditionalConfiguration(conditionalTask.condition, (cnd) -> universe.getBigbang().postTask(debug -> {
+                try (var ignored = CausalityExport.setCause(CausalityEvents.DeferredTask.create(conditionalTask))) {
+                    conditionalTask.task.accept(cnd);
+                }
+            }));
         }
         pendingConditionalTasks.clear();
     }
@@ -186,7 +189,14 @@ public class ReflectionDataBuilder extends ConditionalConfigurationRegistry impl
         }
 
         if (universe != null) {
-            registerConditionalConfiguration(condition, (cnd) -> universe.getBigbang().postTask(debug -> task.accept(cnd)));
+            registerConditionalConfiguration(condition, (cnd) -> {
+                CausalityEvent inheritedCause = CausalityExport.getCause();
+                universe.getBigbang().postTask(debug -> {
+                    try (var ignored = CausalityExport.setCause(inheritedCause)) {
+                        task.accept(cnd);
+                    }
+                });
+            });
         } else {
             var conditionalTask = new ConditionalTask(condition, task);
             CausalityExport.registerEvent(CausalityEvents.DeferredTask.create(conditionalTask));
