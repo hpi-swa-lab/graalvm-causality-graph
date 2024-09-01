@@ -441,7 +441,9 @@ public class ReflectionDataBuilder extends ConditionalConfigurationRegistry impl
     @SuppressWarnings("try")
     private void registerMethods(ConfigurationCondition cnd, boolean queriedOnly, Executable[] reflectExecutables) {
         for (Executable reflectExecutable : reflectExecutables) {
-            registerMethod(cnd, queriedOnly, reflectExecutable);
+            try (var ignored = CausalityExport.pushCause(CausalityEvents.ReflectionRegistration.create(reflectExecutable))) {
+                registerMethod(cnd, queriedOnly, reflectExecutable);
+            }
         }
     }
 
@@ -449,75 +451,74 @@ public class ReflectionDataBuilder extends ConditionalConfigurationRegistry impl
         if (SubstitutionReflectivityFilter.shouldExclude(reflectExecutable, metaAccess, universe)) {
             return;
         }
-        try (var ignored = CausalityExport.pushCause(CausalityEvents.ReflectionRegistration.create(reflectExecutable))) {
-            AnalysisMethod analysisMethod = metaAccess.lookupJavaMethod(reflectExecutable);
-            AnalysisType declaringType = analysisMethod.getDeclaringClass();
-            var classMethods = registeredMethods.computeIfAbsent(declaringType, t -> new ConcurrentHashMap<>());
-            var shouldRegisterReachabilityHandler = classMethods.isEmpty();
+        
+        AnalysisMethod analysisMethod = metaAccess.lookupJavaMethod(reflectExecutable);
+        AnalysisType declaringType = analysisMethod.getDeclaringClass();
+        var classMethods = registeredMethods.computeIfAbsent(declaringType, t -> new ConcurrentHashMap<>());
+        var shouldRegisterReachabilityHandler = classMethods.isEmpty();
 
-            boolean registered = false;
-            ConditionalRuntimeValue<Executable> conditionalValue = classMethods.get(analysisMethod);
+        boolean registered = false;
+        ConditionalRuntimeValue<Executable> conditionalValue = classMethods.get(analysisMethod);
+        if (conditionalValue == null) {
+            var newConditionalValue = new ConditionalRuntimeValue<>(RuntimeConditionSet.emptySet(), reflectExecutable);
+            conditionalValue = classMethods.putIfAbsent(analysisMethod, newConditionalValue);
             if (conditionalValue == null) {
-                var newConditionalValue = new ConditionalRuntimeValue<>(RuntimeConditionSet.emptySet(), reflectExecutable);
-                conditionalValue = classMethods.putIfAbsent(analysisMethod, newConditionalValue);
-                if (conditionalValue == null) {
-                    conditionalValue = newConditionalValue;
-                    registered = true;
-                }
+                conditionalValue = newConditionalValue;
+                registered = true;
             }
-            if (!queriedOnly) {
-                /* queryOnly methods are conditioned by the type itself */
-                conditionalValue.getConditions().addCondition(cnd);
-            }
+        }
+        if (!queriedOnly) {
+            /* queryOnly methods are conditioned by the type itself */
+            conditionalValue.getConditions().addCondition(cnd);
+        }
 
-            if (registered) {
-                registerTypesForMethod(analysisMethod, reflectExecutable);
-                Class<?> declaringClass = declaringType.getJavaClass();
-
-                /*
-                 * The image needs to know about subtypes shadowing methods registered for reflection to
-                 * ensure the correctness of run-time reflection queries.
-                 */
-                if (shouldRegisterReachabilityHandler) {
-                    analysisAccess.registerSubtypeReachabilityHandler(
-                            (access, subType) -> universe.getBigbang()
-                                    .postTask(debug -> checkSubtypeForOverridingMethods(metaAccess.lookupJavaType(subType), registeredMethods.get(declaringType).keySet())),
-                            declaringClass);
-                } else {
-                    /*
-                     * We need to perform the check for already reachable subtypes since the
-                     * reachability handler was already called for them.
-                     */
-                    for (AnalysisType subtype : AnalysisUniverse.reachableSubtypes(declaringType)) {
-                        universe.getBigbang().postTask(debug -> checkSubtypeForOverridingMethods(subtype, Collections.singleton(analysisMethod)));
-                    }
-                }
-
-                if (declaringType.isAnnotation() && !analysisMethod.isConstructor()) {
-                    processAnnotationMethod(queriedOnly, (Method) reflectExecutable);
-                }
-
-                if (!throwMissingRegistrationErrors() && declaringClass.isRecord()) {
-                    pendingRecordClasses.computeIfPresent(declaringClass, (clazz, unregisteredAccessors) -> {
-                        if (unregisteredAccessors.remove(reflectExecutable) && unregisteredAccessors.isEmpty()) {
-                            registerRecordComponents(declaringClass);
-                        }
-                        return unregisteredAccessors;
-                    });
-                }
-            }
+        if (registered) {
+            registerTypesForMethod(analysisMethod, reflectExecutable);
+            Class<?> declaringClass = declaringType.getJavaClass();
 
             /*
-             * We need to run this even if the method has already been registered, in case it was only
-             * registered as queried.
+             * The image needs to know about subtypes shadowing methods registered for reflection to
+             * ensure the correctness of run-time reflection queries.
              */
-            if (!queriedOnly) {
-                methodAccessors.computeIfAbsent(analysisMethod, aMethod -> {
-                    SubstrateAccessor accessor = ImageSingletons.lookup(ReflectionFeature.class).getOrCreateAccessor(reflectExecutable);
-                    universe.getHeapScanner().rescanObject(accessor);
-                    return accessor;
+            if (shouldRegisterReachabilityHandler) {
+                analysisAccess.registerSubtypeReachabilityHandler(
+                        (access, subType) -> universe.getBigbang()
+                                .postTask(debug -> checkSubtypeForOverridingMethods(metaAccess.lookupJavaType(subType), registeredMethods.get(declaringType).keySet())),
+                        declaringClass);
+            } else {
+                /*
+                 * We need to perform the check for already reachable subtypes since the
+                 * reachability handler was already called for them.
+                 */
+                for (AnalysisType subtype : AnalysisUniverse.reachableSubtypes(declaringType)) {
+                    universe.getBigbang().postTask(debug -> checkSubtypeForOverridingMethods(subtype, Collections.singleton(analysisMethod)));
+                }
+            }
+
+            if (declaringType.isAnnotation() && !analysisMethod.isConstructor()) {
+                processAnnotationMethod(queriedOnly, (Method) reflectExecutable);
+            }
+
+            if (!throwMissingRegistrationErrors() && declaringClass.isRecord()) {
+                pendingRecordClasses.computeIfPresent(declaringClass, (clazz, unregisteredAccessors) -> {
+                    if (unregisteredAccessors.remove(reflectExecutable) && unregisteredAccessors.isEmpty()) {
+                        registerRecordComponents(declaringClass);
+                    }
+                    return unregisteredAccessors;
                 });
             }
+        }
+
+        /*
+         * We need to run this even if the method has already been registered, in case it was only
+         * registered as queried.
+         */
+        if (!queriedOnly) {
+            methodAccessors.computeIfAbsent(analysisMethod, aMethod -> {
+                SubstrateAccessor accessor = ImageSingletons.lookup(ReflectionFeature.class).getOrCreateAccessor(reflectExecutable);
+                universe.getHeapScanner().rescanObject(accessor);
+                return accessor;
+            });
         }
     }
 
@@ -591,7 +592,9 @@ public class ReflectionDataBuilder extends ConditionalConfigurationRegistry impl
     @SuppressWarnings("try")
     private void registerFields(ConfigurationCondition cnd, boolean queriedOnly, Field[] reflectFields) {
         for (Field reflectField : reflectFields) {
-            registerField(cnd, queriedOnly, reflectField);
+            try (var ignored = CausalityExport.pushCause(CausalityEvents.ReflectionRegistration.create(reflectField))) {
+                registerField(cnd, queriedOnly, reflectField);
+            }
         }
     }
 
@@ -599,55 +602,54 @@ public class ReflectionDataBuilder extends ConditionalConfigurationRegistry impl
         if (SubstitutionReflectivityFilter.shouldExclude(reflectField, metaAccess, universe)) {
             return;
         }
-        try (var ignored = CausalityExport.pushCause(CausalityEvents.ReflectionRegistration.create(reflectField))) {
-            AnalysisField analysisField = metaAccess.lookupJavaField(reflectField);
-            AnalysisType declaringClass = analysisField.getDeclaringClass();
 
-            var classFields = registeredFields.computeIfAbsent(declaringClass, t -> new ConcurrentHashMap<>());
-            boolean exists = classFields.containsKey(analysisField);
-            boolean shouldRegisterReachabilityHandler = classFields.isEmpty();
-            var cndValue = classFields.computeIfAbsent(analysisField, f -> new ConditionalRuntimeValue<>(RuntimeConditionSet.emptySet(), reflectField));
-            if (!queriedOnly) {
-                /* queryOnly methods are conditioned by the type itself */
-                cndValue.getConditions().addCondition(cnd);
-            }
+        AnalysisField analysisField = metaAccess.lookupJavaField(reflectField);
+        AnalysisType declaringClass = analysisField.getDeclaringClass();
 
-            if (!exists) {
-                registerTypesForField(analysisField, reflectField, true);
+        var classFields = registeredFields.computeIfAbsent(declaringClass, t -> new ConcurrentHashMap<>());
+        boolean exists = classFields.containsKey(analysisField);
+        boolean shouldRegisterReachabilityHandler = classFields.isEmpty();
+        var cndValue = classFields.computeIfAbsent(analysisField, f -> new ConditionalRuntimeValue<>(RuntimeConditionSet.emptySet(), reflectField));
+        if (!queriedOnly) {
+            /* queryOnly methods are conditioned by the type itself */
+            cndValue.getConditions().addCondition(cnd);
+        }
 
-                /*
-                 * The image needs to know about subtypes shadowing fields registered for reflection to
-                 * ensure the correctness of run-time reflection queries.
-                 */
-                if (shouldRegisterReachabilityHandler) {
-                    analysisAccess.registerSubtypeReachabilityHandler(
-                            (access, subType) -> universe.getBigbang()
-                                    .postTask(debug -> checkSubtypeForOverridingFields(metaAccess.lookupJavaType(subType),
-                                            registeredFields.get(declaringClass).keySet())),
-                            declaringClass.getJavaClass());
-                } else {
-                    /*
-                     * We need to perform the check for already reachable subtypes since the
-                     * reachability handler was already called for them.
-                     */
-                    for (AnalysisType subtype : AnalysisUniverse.reachableSubtypes(declaringClass)) {
-                        universe.getBigbang().postTask(debug -> checkSubtypeForOverridingFields(subtype, Collections.singleton(analysisField)));
-                    }
-                }
-
-                if (declaringClass.isAnnotation()) {
-                    processAnnotationField(cnd, reflectField);
-                }
-            }
+        if (!exists) {
+            registerTypesForField(analysisField, reflectField, true);
 
             /*
-             * We need to run this even if the method has already been registered, in case it was only
-             * registered as queried.
+             * The image needs to know about subtypes shadowing fields registered for reflection to
+             * ensure the correctness of run-time reflection queries.
              */
-            if (!queriedOnly) {
-                registerTypesForField(analysisField, reflectField, false);
+            if (shouldRegisterReachabilityHandler) {
+                analysisAccess.registerSubtypeReachabilityHandler(
+                        (access, subType) -> universe.getBigbang()
+                                .postTask(debug -> checkSubtypeForOverridingFields(metaAccess.lookupJavaType(subType),
+                                        registeredFields.get(declaringClass).keySet())),
+                        declaringClass.getJavaClass());
+            } else {
+                /*
+                 * We need to perform the check for already reachable subtypes since the
+                 * reachability handler was already called for them.
+                 */
+                for (AnalysisType subtype : AnalysisUniverse.reachableSubtypes(declaringClass)) {
+                    universe.getBigbang().postTask(debug -> checkSubtypeForOverridingFields(subtype, Collections.singleton(analysisField)));
+                }
+            }
+
+            if (declaringClass.isAnnotation()) {
+                processAnnotationField(cnd, reflectField);
             }
         }
+
+        /*
+         * We need to run this even if the method has already been registered, in case it was only
+         * registered as queried.
+         */
+        if (!queriedOnly) {
+            registerTypesForField(analysisField, reflectField, false);
+            }
     }
 
     @Override
