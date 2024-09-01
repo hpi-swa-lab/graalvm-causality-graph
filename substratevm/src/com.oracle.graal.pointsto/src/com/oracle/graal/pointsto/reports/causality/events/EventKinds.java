@@ -57,6 +57,8 @@ public enum EventKinds {
     SubtypeReachableNotificationCallback("Subtype Reachable Callback"),
     SubtypeReachableNotificationCallbackInvocation("Subtype Reachable Callback Invocation"),
 
+    DeferredTask("Deferred Task"),
+
     AutomaticFeatureRegistration("Automatic Feature Registration"),
     UserRequestedFeatureRegistration("User-Requested Feature Registration"),
     InitialRegistrations("Initial Registrations"),

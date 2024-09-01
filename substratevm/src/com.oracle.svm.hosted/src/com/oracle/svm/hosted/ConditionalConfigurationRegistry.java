@@ -67,7 +67,7 @@ public abstract class ConditionalConfigurationRegistry {
             if (beforeAnalysisAccess == null) {
                 Collection<Runnable> handlers = pendingReachabilityHandlers.computeIfAbsent(condition.getType(), key -> new ConcurrentLinkedQueue<>());
                 CausalityExport.registerEvent(CausalityEvents.ConfigurationCondition.create(condition.getType()));
-            handlers.add(() -> consumer.accept(runtimeCondition));
+                handlers.add(() -> consumer.accept(runtimeCondition));
             } else {
                 beforeAnalysisAccess.registerReachabilityHandler(access -> consumer.accept(runtimeCondition), condition.getType());
             }

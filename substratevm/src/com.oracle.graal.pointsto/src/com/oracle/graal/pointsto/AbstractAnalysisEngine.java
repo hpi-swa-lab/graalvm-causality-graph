@@ -47,6 +47,8 @@ import com.oracle.graal.pointsto.meta.AnalysisType;
 import com.oracle.graal.pointsto.meta.AnalysisUniverse;
 import com.oracle.graal.pointsto.meta.HostedProviders;
 import com.oracle.graal.pointsto.reports.StatisticsPrinter;
+import com.oracle.graal.pointsto.reports.causality.CausalityExport;
+import com.oracle.graal.pointsto.reports.causality.events.CausalityEvent;
 import com.oracle.graal.pointsto.util.AnalysisError;
 import com.oracle.graal.pointsto.util.CompletionExecutor;
 import com.oracle.graal.pointsto.util.Timer;
@@ -328,7 +330,30 @@ public abstract class AbstractAnalysisEngine implements BigBang {
 
     @Override
     public final void postTask(CompletionExecutor.DebugContextRunnable task) {
-        executor.execute(task);
+        CausalityEvent inheritedCause = CausalityExport.getCause();
+        if (inheritedCause == null) {
+            executor.execute(task);
+        } else {
+            // This branch would always be correct, but slower.
+            executor.execute(new CompletionExecutor.DebugContextRunnable() {
+                @Override
+                public void run(DebugContext debug) {
+                    try (var ignored = CausalityExport.setCause(inheritedCause)) {
+                        task.run(debug);
+                    }
+                }
+
+                @Override
+                public DebugContext getDebug(OptionValues opts, List<DebugHandlersFactory> factories) {
+                    return task.getDebug(opts, factories);
+                }
+
+                @Override
+                public DebugContext.Description getDescription() {
+                    return task.getDescription();
+                }
+            });
+        }
     }
 
     public void postTask(final Runnable task) {

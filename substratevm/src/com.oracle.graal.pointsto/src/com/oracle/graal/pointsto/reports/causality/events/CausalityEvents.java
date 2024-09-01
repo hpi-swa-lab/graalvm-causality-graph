@@ -241,6 +241,7 @@ public final class CausalityEvents {
     public static final EventFactory<AnnotatedElement> JNIRegistration = factory(JNIRegistration::new);
     public static final EventFactory<AnnotatedElement> ReflectionRegistration = factory(ReflectionRegistration::new);
     public static final EventFactory<AnnotatedElement> ReflectionObjectInHeap = factory(ReflectionObjectInHeap::new);
+    public static final EventFactory<Object> DeferredTask = factory(DeferredTask::new);
     public static final CausalityEvent AutomaticFeatureRegistration = new RootEvent(EventKinds.AutomaticFeatureRegistration);
     public static final CausalityEvent UserEnabledFeatureRegistration = new RootEvent(EventKinds.UserRequestedFeatureRegistration);
     public static final CausalityEvent InitialRegistration = new RootEvent(EventKinds.InitialRegistrations);
