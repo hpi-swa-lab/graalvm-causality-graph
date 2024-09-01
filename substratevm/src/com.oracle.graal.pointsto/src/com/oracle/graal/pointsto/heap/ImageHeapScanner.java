@@ -343,13 +343,12 @@ public abstract class ImageHeapScanner {
             try (var ignored = CausalityExport.setCause(CausalityEvents.Ignored)) { // TODO
                 type.registerAsReachable(reason);
             }
-            ScanReason arrayReason = new ArrayScan(type, array, reason);
             Object[] elementValues = new Object[length];
             for (int idx = 0; idx < length; idx++) {
                 final JavaConstant rawElementValue = hostedValuesProvider.readArrayElement(constant, idx);
                 int finalIdx = idx;
                 elementValues[idx] = new AnalysisFuture<>(() -> {
-                    JavaConstant arrayElement = createImageHeapConstant(rawElementValue, arrayReason);
+                    JavaConstant arrayElement = createImageHeapConstant(rawElementValue, new ArrayScan(type, array, reason, finalIdx));
                     array.setElement(finalIdx, arrayElement);
                     return arrayElement;
                 });

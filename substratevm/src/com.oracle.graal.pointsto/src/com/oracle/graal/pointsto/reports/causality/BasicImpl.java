@@ -235,6 +235,7 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
 
     @Override
     public CausalityEvent getHeapArrayAssigner(BigBang bb, JavaConstant array, int elementIndex, JavaConstant value) {
+        if (elementIndex < 0) throw new ArrayIndexOutOfBoundsException(elementIndex);
         if (array instanceof ImageHeapObjectArray imageHeapArray && !imageHeapArray.isBackedByHostedObject()) {
             return SimulatedHeapTracing.instance.getHeapArrayAssigner(imageHeapArray, elementIndex, value);
         }
