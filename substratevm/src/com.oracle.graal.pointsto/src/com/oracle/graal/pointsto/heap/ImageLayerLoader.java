@@ -32,6 +32,7 @@ import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.CAN_BE_STATI
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.CLASS_JAVA_NAME_TAG;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.CLASS_NAME_TAG;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.CODE_SIZE_TAG;
+import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.CODE_TAG;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.COMPONENT_TYPE_TAG;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.CONSTANTS_TAG;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.CONSTANTS_TO_RELINK_TAG;
@@ -55,15 +56,25 @@ import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.INSTANCE_TAG
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.INTERFACES_TAG;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.INTRINSIC_TAG;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.IS_CONSTRUCTOR_TAG;
+import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.IS_DIRECT_ROOT_METHOD;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.IS_ENUM_TAG;
+import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.IS_IMPLEMENTATION_INVOKED;
+import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.IS_INITIALIZED_AT_BUILD_TIME_TAG;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.IS_INITIALIZED_TAG;
+import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.IS_INSTANTIATED;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.IS_INTERFACE_TAG;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.IS_INTERNAL_TAG;
+import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.IS_INTRINSIC_METHOD;
+import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.IS_INVOKED;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.IS_LINKED_TAG;
+import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.IS_REACHABLE;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.IS_SYNTHETIC_TAG;
+import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.IS_UNSAFE_ALLOCATED;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.IS_VAR_ARGS_TAG;
+import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.IS_VIRTUAL_ROOT_METHOD;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.LOCATION_TAG;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.METHODS_TAG;
+import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.METHOD_HANDLE_INTRINSIC_TAG;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.MODIFIERS_TAG;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.NAME_TAG;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.NEXT_FIELD_ID_TAG;
@@ -94,12 +105,15 @@ import java.io.InputStreamReader;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Executable;
 import java.lang.reflect.Field;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import org.graalvm.collections.EconomicMap;
@@ -123,6 +137,7 @@ import com.oracle.graal.pointsto.util.AnalysisError;
 import com.oracle.graal.pointsto.util.AnalysisFuture;
 import com.oracle.svm.util.ReflectionUtil;
 
+import jdk.graal.compiler.core.common.NumUtil;
 import jdk.graal.compiler.core.common.SuppressFBWarnings;
 import jdk.graal.compiler.debug.GraalError;
 import jdk.graal.compiler.nodes.EncodedGraph;
@@ -130,6 +145,7 @@ import jdk.graal.compiler.util.ObjectCopier;
 import jdk.graal.compiler.util.json.JsonParser;
 import jdk.vm.ci.meta.JavaConstant;
 import jdk.vm.ci.meta.JavaKind;
+import jdk.vm.ci.meta.MethodHandleAccessProvider.IntrinsicMethod;
 import jdk.vm.ci.meta.PrimitiveConstant;
 import jdk.vm.ci.meta.ResolvedJavaType;
 
@@ -157,11 +173,15 @@ import jdk.vm.ci.meta.ResolvedJavaType;
  *              "is interface": isInterface,
  *              "is enum": isEnum,
  *              "is initialized": isInitialized,
+ *              "is initialized at build time": isInitializedAtBuildTime,
  *              "is linked": isLinked,
  *              "source file name": sourceFileName,
  *              "enclosing type": enclosingTid,
  *              "component type": componentTid,
  *              "super class": superClassTid,
+ *              "is instantiated": isInstantiated,
+ *              "is unsafe allocated": isUnsafeAllocated,
+ *              "is reachable": isReachable,
  *              "interfaces": [
  *                  interfaceTid,
  *                  ...
@@ -194,8 +214,15 @@ import jdk.vm.ci.meta.ResolvedJavaType;
  *              "modifiers": modifiers,
  *              "is constructor": isConstructor,
  *              "is synthetic": isSynthetic,
+ *              "code": code,
  *              "code size": codeSize,
+ *              "method handle intrinsic": methodHandleIntrinsic,
  *              "compiled": compiled,
+ *              "is virtual root method": isVirtualRootMethod,
+ *              "is direct root method": isDirectRootMethod,
+ *              "is invoked": isInvoked,
+ *              "is implementation invoked": isImplementationInvoked,
+ *              "is intrinsic method": isIntrinsicMethod,
  *              "annotations": [
  *                  annotationName,
  *                  ...
@@ -278,12 +305,18 @@ public class ImageLayerLoader {
     protected final Map<Integer, AnalysisMethod> methods = new ConcurrentHashMap<>();
     protected final Map<Integer, AnalysisField> fields = new ConcurrentHashMap<>();
     protected final Map<Integer, ImageHeapConstant> constants = new ConcurrentHashMap<>();
-    private final List<Path> loadPaths;
+    private final List<FilePaths> loadPaths;
     private final Map<Integer, BaseLayerType> baseLayerTypes = new ConcurrentHashMap<>();
-    private final Map<Integer, Integer> typeToHubIdentityHashCode = new HashMap<>();
+    private final Map<Integer, Integer> typeToHubIdentityHashCode = new ConcurrentHashMap<>();
     private final Map<Integer, BaseLayerMethod> baseLayerMethods = new ConcurrentHashMap<>();
-    private final Map<Integer, String> typeIdToIdentifier = new HashMap<>();
+
+    /** Map from the type id to its identifier in the jsonMap. */
+    protected final Map<Integer, String> typeIdToIdentifier = new HashMap<>();
+
+    /** Map from the method id to its identifier in the jsonMap. */
     private final Map<Integer, String> methodIdToIdentifier = new HashMap<>();
+
+    /** Map from the field id to the information needed to access it in the jsonMap. */
     private final Map<Integer, FieldIdentifier> fieldIdToIdentifier = new HashMap<>();
 
     record FieldIdentifier(String tid, String name) {
@@ -302,20 +335,24 @@ public class ImageLayerLoader {
     protected HostedValuesProvider hostedValuesProvider;
 
     protected EconomicMap<String, Object> jsonMap;
+    protected FileChannel graphsChannel;
 
     private long imageHeapSize;
+
+    public record FilePaths(Path snapshot, Path snapshotGraphs) {
+    }
 
     public ImageLayerLoader() {
         this(new ImageLayerSnapshotUtil(), List.of());
     }
 
-    public ImageLayerLoader(ImageLayerSnapshotUtil imageLayerSnapshotUtil, List<Path> loadPaths) {
+    public ImageLayerLoader(ImageLayerSnapshotUtil imageLayerSnapshotUtil, List<FilePaths> loadPaths) {
         this.imageLayerSnapshotUtil = imageLayerSnapshotUtil;
         this.loadPaths = loadPaths;
     }
 
-    public List<Path> getLoadPaths() {
-        return loadPaths;
+    public AnalysisUniverse getUniverse() {
+        return universe;
     }
 
     public void setUniverse(AnalysisUniverse newUniverse) {
@@ -326,16 +363,18 @@ public class ImageLayerLoader {
         this.imageLayerLoaderHelper = imageLayerLoaderHelper;
     }
 
-    /**
-     * Note this code is not thread safe.
-     */
-    protected void loadJsonMap() {
+    /** This code is not thread safe. */
+    protected void openFilesAndLoadJsonMap() {
         assert loadPaths.size() == 1 : "Currently only one path is supported for image layer loading " + loadPaths;
         if (jsonMap == null) {
-            for (Path layerPath : loadPaths) {
-                try (InputStreamReader inputStreamReader = new InputStreamReader(new FileInputStream(layerPath.toFile()))) {
-                    Object json = new JsonParser(inputStreamReader).parse();
-                    jsonMap = cast(json);
+            for (FilePaths paths : loadPaths) {
+                try {
+                    graphsChannel = FileChannel.open(paths.snapshotGraphs);
+
+                    try (InputStreamReader inputStreamReader = new InputStreamReader(new FileInputStream(paths.snapshot.toFile()))) {
+                        Object json = new JsonParser(inputStreamReader).parse();
+                        jsonMap = cast(json);
+                    }
                 } catch (IOException e) {
                     throw AnalysisError.shouldNotReachHere("Error during image layer snapshot loading", e);
                 }
@@ -344,8 +383,18 @@ public class ImageLayerLoader {
     }
 
     public void loadLayerAnalysis() {
-        loadJsonMap();
+        openFilesAndLoadJsonMap();
         loadLayerAnalysis0();
+    }
+
+    public void cleanupAfterAnalysis() {
+        if (graphsChannel != null) {
+            try {
+                graphsChannel.close();
+            } catch (IOException e) {
+                throw AnalysisError.shouldNotReachHere(e);
+            }
+        }
     }
 
     /**
@@ -367,7 +416,6 @@ public class ImageLayerLoader {
 
         imageHeapSize = Long.parseLong(get(jsonMap, IMAGE_HEAP_SIZE_TAG));
 
-        /* Those mappings allow to get the base layer information from a type or method id */
         storeIdToIdentifier(TYPES_TAG, typeIdToIdentifier);
         storeIdToIdentifier(METHODS_TAG, methodIdToIdentifier);
 
@@ -420,6 +468,10 @@ public class ImageLayerLoader {
     private void loadType(EconomicMap<String, Object> typeData) {
         int tid = get(typeData, ID_TAG);
 
+        if (imageLayerLoaderHelper.loadType(typeData, tid)) {
+            return;
+        }
+
         String name = get(typeData, CLASS_JAVA_NAME_TAG);
         Class<?> clazz = lookupBaseLayerTypeInHostVM(name);
 
@@ -445,6 +497,7 @@ public class ImageLayerLoader {
                 boolean isInterface = get(typeData, IS_INTERFACE_TAG);
                 boolean isEnum = get(typeData, IS_ENUM_TAG);
                 boolean isInitialized = get(typeData, IS_INITIALIZED_TAG);
+                boolean initializedAtBuildTime = get(typeData, IS_INITIALIZED_AT_BUILD_TIME_TAG);
                 boolean isLinked = get(typeData, IS_LINKED_TAG);
                 String sourceFileName = get(typeData, SOURCE_FILE_NAME_TAG);
 
@@ -464,8 +517,8 @@ public class ImageLayerLoader {
 
                 Annotation[] annotations = getAnnotations(typeData);
 
-                return new BaseLayerType(className, tid, modifiers, isInterface, isEnum, isInitialized, isLinked, sourceFileName, enclosingType, componentType, superClass, interfaces, objectType,
-                                annotations);
+                return new BaseLayerType(className, tid, modifiers, isInterface, isEnum, isInitialized, initializedAtBuildTime, isLinked, sourceFileName, enclosingType, componentType, superClass,
+                                interfaces, objectType, annotations);
             });
             BaseLayerType baseLayerType = baseLayerTypes.get(tid);
             AnalysisType type = universe.lookup(baseLayerType);
@@ -524,11 +577,34 @@ public class ImageLayerLoader {
         return id;
     }
 
+    public void initializeBaseLayerType(AnalysisType type) {
+        String typeIdentifier = typeIdToIdentifier.get(type.getId());
+        boolean post = true;
+        if (typeIdentifier == null) {
+            /*
+             * This type was not already created when loading the base layer, so the flags can be
+             * registered directly.
+             */
+            post = false;
+            typeIdentifier = imageLayerSnapshotUtil.getTypeIdentifier(type);
+        }
+        EconomicMap<String, Object> typeData = getElementData(TYPES_TAG, typeIdentifier);
+        if (typeData != null) {
+            boolean isInstantiated = get(typeData, IS_INSTANTIATED);
+            boolean isUnsafeAllocated = get(typeData, IS_UNSAFE_ALLOCATED);
+            boolean isReachable = get(typeData, IS_REACHABLE);
+
+            registerFlag(isInstantiated, post, () -> type.registerAsInstantiated(PERSISTED));
+            registerFlag(isUnsafeAllocated, post, () -> type.registerAsUnsafeAllocated(PERSISTED));
+            registerFlag(isReachable, post, () -> type.registerAsReachable(PERSISTED));
+        }
+    }
+
     /**
      * Tries to look up the base layer type in the current VM. Some types cannot be looked up by
      * name (for example $$Lambda types), so this method can return null.
      */
-    public static Class<?> lookupBaseLayerTypeInHostVM(String type) {
+    public Class<?> lookupBaseLayerTypeInHostVM(String type) {
         int arrayType = 0;
         String componentType = type;
         /*
@@ -541,7 +617,7 @@ public class ImageLayerLoader {
         }
         Class<?> clazz = lookupPrimitiveClass(componentType);
         if (clazz == null) {
-            clazz = ReflectionUtil.lookupClass(true, componentType);
+            clazz = lookupClass(true, componentType);
         }
         if (clazz == null) {
             return null;
@@ -584,7 +660,7 @@ public class ImageLayerLoader {
             Executable method = null;
             Class<?> clazz = lookupBaseLayerTypeInHostVM(className);
             if (clazz != null) {
-                Class<?>[] argumentClasses = arguments.stream().map(ImageLayerLoader::lookupBaseLayerTypeInHostVM).toList().toArray(new Class<?>[0]);
+                Class<?>[] argumentClasses = arguments.stream().map(this::lookupBaseLayerTypeInHostVM).toList().toArray(new Class<?>[0]);
                 method = lookupMethodByReflection(name, clazz, argumentClasses);
             }
 
@@ -627,13 +703,17 @@ public class ImageLayerLoader {
     }
 
     private static Executable lookupMethodByReflection(String name, Class<?> clazz, Class<?>[] argumentClasses) {
-        Executable method;
-        if (name.equals(CONSTRUCTOR_NAME)) {
-            method = ReflectionUtil.lookupConstructor(true, clazz, argumentClasses);
-        } else {
-            method = ReflectionUtil.lookupMethod(true, clazz, name, argumentClasses);
+        try {
+            Executable method;
+            if (name.equals(CONSTRUCTOR_NAME)) {
+                method = ReflectionUtil.lookupConstructor(true, clazz, argumentClasses);
+            } else {
+                method = ReflectionUtil.lookupMethod(true, clazz, name, argumentClasses);
+            }
+            return method;
+        } catch (NoClassDefFoundError e) {
+            return null;
         }
-        return method;
     }
 
     private void createBaseLayerMethod(EconomicMap<String, Object> methodData, int mid, String name) {
@@ -647,11 +727,15 @@ public class ImageLayerLoader {
         int modifiers = get(methodData, MODIFIERS_TAG);
         boolean isSynthetic = get(methodData, IS_SYNTHETIC_TAG);
         boolean isVarArgs = get(methodData, IS_VAR_ARGS_TAG);
+        List<Integer> codeEncoding = get(methodData, CODE_TAG);
+        byte[] code = codeEncoding == null ? null : getBytes(codeEncoding);
         int codeSize = get(methodData, CODE_SIZE_TAG);
+        String methodHandleIntrinsicName = get(methodData, METHOD_HANDLE_INTRINSIC_TAG);
+        IntrinsicMethod methodHandleIntrinsic = methodHandleIntrinsicName == null ? null : IntrinsicMethod.valueOf(methodHandleIntrinsicName);
         Annotation[] annotations = getAnnotations(methodData);
 
-        baseLayerMethods.computeIfAbsent(mid,
-                        methodId -> new BaseLayerMethod(mid, type, name, isVarArgs, signature, canBeStaticallyBound, isConstructor, modifiers, isSynthetic, codeSize, annotations));
+        baseLayerMethods.computeIfAbsent(mid, methodId -> new BaseLayerMethod(mid, type, name, isVarArgs, signature, canBeStaticallyBound, isConstructor, modifiers, isSynthetic, code, codeSize,
+                        methodHandleIntrinsic, annotations));
         BaseLayerMethod baseLayerMethod = baseLayerMethods.get(mid);
 
         universe.lookup(baseLayerMethod);
@@ -689,18 +773,33 @@ public class ImageLayerLoader {
         return get(methodData, ID_TAG);
     }
 
-    public void initializeBaseLayerMethod(AnalysisMethod analysisMethod) {
-        int id = analysisMethod.getId();
-        methods.putIfAbsent(id, analysisMethod);
+    public void addBaseLayerMethod(AnalysisMethod analysisMethod) {
+        methods.putIfAbsent(analysisMethod.getId(), analysisMethod);
+    }
 
+    public void initializeBaseLayerMethod(AnalysisMethod analysisMethod) {
         initializeBaseLayerMethod(analysisMethod, getMethodData(analysisMethod));
     }
 
-    @SuppressWarnings("unused")
     protected void initializeBaseLayerMethod(AnalysisMethod analysisMethod, EconomicMap<String, Object> methodData) {
-        /* No flags to load in the AnalysisMethod */
+        boolean isVirtualRootMethod = get(methodData, IS_VIRTUAL_ROOT_METHOD);
+        boolean isDirectRootMethod = get(methodData, IS_DIRECT_ROOT_METHOD);
+        boolean isInvoked = get(methodData, IS_INVOKED);
+        boolean isImplementationInvoked = get(methodData, IS_IMPLEMENTATION_INVOKED);
+        boolean isIntrinsicMethod = get(methodData, IS_INTRINSIC_METHOD);
+
+        registerFlag(isVirtualRootMethod, true, () -> analysisMethod.registerAsVirtualRootMethod(PERSISTED));
+        registerFlag(isDirectRootMethod, true, () -> analysisMethod.registerAsDirectRootMethod(PERSISTED));
+        registerFlag(isInvoked, true, () -> analysisMethod.registerAsInvoked(PERSISTED));
+        registerFlag(isImplementationInvoked, true, () -> analysisMethod.registerAsImplementationInvoked(PERSISTED));
+        registerFlag(isIntrinsicMethod, true, () -> analysisMethod.registerAsIntrinsicMethod(PERSISTED));
     }
 
+    /**
+     * Currently we save analysis parsed graphs for methods considered
+     * {@link AnalysisMethod#isReachable}. See {@link ImageLayerWriter#persistMethodGraphs} for
+     * implementation.
+     */
     public boolean hasAnalysisParsedGraph(AnalysisMethod analysisMethod) {
         EconomicMap<String, Object> methodData = getMethodData(analysisMethod);
         return get(methodData, ANALYSIS_PARSED_GRAPH_TAG) != null;
@@ -708,7 +807,7 @@ public class ImageLayerLoader {
 
     public AnalysisParsedGraph getAnalysisParsedGraph(AnalysisMethod analysisMethod) {
         EconomicMap<String, Object> methodData = getMethodData(analysisMethod);
-        String encodedAnalyzedGraph = get(methodData, ANALYSIS_PARSED_GRAPH_TAG);
+        String encodedAnalyzedGraph = readEncodedGraph(methodData, ANALYSIS_PARSED_GRAPH_TAG);
         Boolean intrinsic = get(methodData, INTRINSIC_TAG);
         /*
          * Methods without a persisted graph are folded and static methods.
@@ -716,13 +815,36 @@ public class ImageLayerLoader {
          * GR-55278: graphs that contain a reference to a $$Lambda cannot be persisted as well.
          */
         if (encodedAnalyzedGraph != null) {
-            EncodedGraph analyzedGraph = (EncodedGraph) ObjectCopier.decode(imageLayerSnapshotUtil.getGraphDecoder(this, universe.getSnippetReflection()), encodedAnalyzedGraph);
+            EncodedGraph analyzedGraph = (EncodedGraph) ObjectCopier.decode(imageLayerSnapshotUtil.getGraphDecoder(this, analysisMethod, universe.getSnippetReflection()), encodedAnalyzedGraph);
             if (hasStrengthenedGraph(analysisMethod)) {
-                loadAllAnalysisElements(get(methodData, STRENGTHENED_GRAPH_TAG));
+                loadAllAnalysisElements(readEncodedGraph(methodData, STRENGTHENED_GRAPH_TAG));
             }
             return new AnalysisParsedGraph(analyzedGraph, intrinsic);
         }
         throw AnalysisError.shouldNotReachHere("The method " + analysisMethod + " does not have a graph from the base layer");
+    }
+
+    private String readEncodedGraph(EconomicMap<String, Object> methodData, String elementIdentifier) {
+        String location = get(methodData, elementIdentifier);
+        int closingBracketAt = location.length() - 1;
+        AnalysisError.guarantee(location.charAt(0) == '@' && location.charAt(closingBracketAt) == ']', "Location must start with '@' and end with ']': %s", location);
+        int openingBracketAt = location.indexOf('[', 1, closingBracketAt);
+        AnalysisError.guarantee(openingBracketAt < closingBracketAt, "Location does not contain '[' at expected location: %s", location);
+        long offset;
+        long nbytes;
+        try {
+            offset = Long.parseUnsignedLong(location.substring(1, openingBracketAt));
+            nbytes = Long.parseUnsignedLong(location.substring(openingBracketAt + 1, closingBracketAt));
+        } catch (NumberFormatException e) {
+            throw AnalysisError.shouldNotReachHere("Location contains invalid positive integer(s): " + location);
+        }
+        ByteBuffer bb = ByteBuffer.allocate(NumUtil.safeToInt(nbytes));
+        try {
+            graphsChannel.read(bb, offset);
+        } catch (IOException e) {
+            throw AnalysisError.shouldNotReachHere("Failed reading a graph from location: " + location, e);
+        }
+        return new String(bb.array(), ImageLayerWriter.GRAPHS_CHARSET);
     }
 
     public boolean hasStrengthenedGraph(AnalysisMethod analysisMethod) {
@@ -732,8 +854,8 @@ public class ImageLayerLoader {
 
     public void setStrengthenedGraph(AnalysisMethod analysisMethod) {
         EconomicMap<String, Object> methodData = getMethodData(analysisMethod);
-        String encodedAnalyzedGraph = get(methodData, STRENGTHENED_GRAPH_TAG);
-        EncodedGraph analyzedGraph = (EncodedGraph) ObjectCopier.decode(imageLayerSnapshotUtil.getGraphDecoder(this, universe.getSnippetReflection()), encodedAnalyzedGraph);
+        String encodedAnalyzedGraph = readEncodedGraph(methodData, STRENGTHENED_GRAPH_TAG);
+        EncodedGraph analyzedGraph = (EncodedGraph) ObjectCopier.decode(imageLayerSnapshotUtil.getGraphDecoder(this, analysisMethod, universe.getSnippetReflection()), encodedAnalyzedGraph);
         processGraph(analyzedGraph);
         analysisMethod.setAnalyzedGraph(analyzedGraph);
     }
@@ -743,17 +865,19 @@ public class ImageLayerLoader {
 
     }
 
-    protected void loadAllAnalysisElements(String encoding) {
-        for (String line : encoding.lines().toList()) {
-            if (line.contains(PointsToAnalysisType.class.getName())) {
-                getAnalysisType(getId(line));
-            } else if (line.contains(PointsToAnalysisMethod.class.getName())) {
-                getAnalysisMethod(getId(line));
-            } else if (line.contains(PointsToAnalysisField.class.getName())) {
-                getAnalysisField(getId(line));
-            } else if (line.contains(ImageHeapInstance.class.getName()) || line.contains(ImageHeapObjectArray.class.getName()) || line.contains(ImageHeapPrimitiveArray.class.getName())) {
-                getOrCreateConstant(getId(line));
-            }
+    private void loadAllAnalysisElements(String encoding) {
+        encoding.lines().forEach(this::loadEncodedGraphLineAnalysisElements);
+    }
+
+    protected void loadEncodedGraphLineAnalysisElements(String line) {
+        if (line.contains(PointsToAnalysisType.class.getName())) {
+            getAnalysisType(getId(line));
+        } else if (line.contains(PointsToAnalysisMethod.class.getName())) {
+            getAnalysisMethod(getId(line));
+        } else if (line.contains(PointsToAnalysisField.class.getName())) {
+            getAnalysisField(getId(line));
+        } else if (line.contains(ImageHeapInstance.class.getName()) || line.contains(ImageHeapObjectArray.class.getName()) || line.contains(ImageHeapPrimitiveArray.class.getName())) {
+            getOrCreateConstant(getId(line));
         }
     }
 
@@ -826,33 +950,31 @@ public class ImageLayerLoader {
         return get(fieldData, ID_TAG);
     }
 
+    public void addBaseLayerField(AnalysisField analysisField) {
+        fields.putIfAbsent(analysisField.getId(), analysisField);
+    }
+
     public void initializeBaseLayerField(AnalysisField analysisField) {
-        if (fields.putIfAbsent(analysisField.getId(), analysisField) == null) {
-            EconomicMap<String, Object> fieldData = getFieldData(analysisField);
+        EconomicMap<String, Object> fieldData = getFieldData(analysisField);
 
-            if (fieldData == null) {
-                /* The field was not reachable in the base image */
-                return;
-            }
-
-            Integer location = get(fieldData, LOCATION_TAG);
-            if (location != null) {
-                fieldLocations.put(analysisField, location);
-            }
-
-            boolean isAccessed = get(fieldData, FIELD_ACCESSED_TAG);
-            boolean isRead = get(fieldData, FIELD_READ_TAG);
-            boolean isWritten = get(fieldData, FIELD_WRITTEN_TAG);
-            boolean isFolded = get(fieldData, FIELD_FOLDED_TAG);
-
-            if (!analysisField.isStatic() && (isAccessed || isRead)) {
-                analysisField.getDeclaringClass().getInstanceFields(true);
-            }
-            registerFieldFlag(isAccessed, () -> analysisField.registerAsAccessed(PERSISTED));
-            registerFieldFlag(isRead, () -> analysisField.registerAsRead(PERSISTED));
-            registerFieldFlag(isWritten, () -> analysisField.registerAsWritten(PERSISTED));
-            registerFieldFlag(isFolded, () -> analysisField.registerAsFolded(PERSISTED));
+        assert fieldData != null : "The field should be in the base layer";
+        Integer location = get(fieldData, LOCATION_TAG);
+        if (location != null) {
+            fieldLocations.put(analysisField, location);
         }
+
+        boolean isAccessed = get(fieldData, FIELD_ACCESSED_TAG);
+        boolean isRead = get(fieldData, FIELD_READ_TAG);
+        boolean isWritten = get(fieldData, FIELD_WRITTEN_TAG);
+        boolean isFolded = get(fieldData, FIELD_FOLDED_TAG);
+
+        if (!analysisField.isStatic() && (isAccessed || isRead)) {
+            analysisField.getDeclaringClass().getInstanceFields(true);
+        }
+        registerFlag(isAccessed, true, () -> analysisField.registerAsAccessed(PERSISTED));
+        registerFlag(isRead, true, () -> analysisField.registerAsRead(PERSISTED));
+        registerFlag(isWritten, true, () -> analysisField.registerAsWritten(PERSISTED));
+        registerFlag(isFolded, true, () -> analysisField.registerAsFolded(PERSISTED));
     }
 
     private EconomicMap<String, Object> getFieldData(AnalysisField analysisField) {
@@ -865,10 +987,14 @@ public class ImageLayerLoader {
         return get(typeFieldsMap, analysisField.getName());
     }
 
-    private void registerFieldFlag(boolean flag, Runnable runnable) {
+    private void registerFlag(boolean flag, boolean post, Runnable runnable) {
         if (flag) {
             if (universe.getBigbang() != null) {
-                universe.getBigbang().postTask(debug -> runnable.run());
+                if (post) {
+                    universe.getBigbang().postTask(debug -> runnable.run());
+                } else {
+                    runnable.run();
+                }
             } else {
                 heapScannerTasks.add(new AnalysisFuture<>(runnable));
             }
@@ -882,7 +1008,13 @@ public class ImageLayerLoader {
         }
     }
 
-    protected ImageHeapConstant getOrCreateConstant(EconomicMap<String, Object> constantsMap, int id, JavaConstant relinkedHostedObject) {
+    /**
+     * Get the {@link ImageHeapConstant} representation for a specific base layer constant id. If
+     * known, the parentReachableHostedObject will point to the corresponding constant in the
+     * underlying host VM, found by querying the parent object that made this constant reachable
+     * (see {@link ImageLayerLoader#getReachableHostedValue(ImageHeapConstant, int)}).
+     */
+    protected ImageHeapConstant getOrCreateConstant(EconomicMap<String, Object> constantsMap, int id, JavaConstant parentReachableHostedObject) {
         if (constants.containsKey(id)) {
             return constants.get(id);
         }
@@ -896,7 +1028,7 @@ public class ImageLayerLoader {
 
         String objectOffset = get(baseLayerConstant, OBJECT_OFFSET_TAG);
         int identityHashCode = get(baseLayerConstant, IDENTITY_HASH_CODE_TAG);
-        if (relinkedHostedObject != null && !type.getJavaClass().equals(Class.class)) {
+        if (parentReachableHostedObject != null && !type.getJavaClass().equals(Class.class)) {
             /*
              * The hash codes of DynamicHubs need to be injected before they are used in a map,
              * which happens right after their creation. The injection of their hash codes can be
@@ -905,37 +1037,42 @@ public class ImageLayerLoader {
              * Also, for DynamicHub constants, the identity hash code persisted is the hash code of
              * the Class object, which we do not want to inject in the DynamicHub.
              */
-            injectIdentityHashCode(hostedValuesProvider.asObject(Object.class, relinkedHostedObject), identityHashCode);
+            injectIdentityHashCode(hostedValuesProvider.asObject(Object.class, parentReachableHostedObject), identityHashCode);
         }
         String constantType = get(baseLayerConstant, CONSTANT_TYPE_TAG);
         switch (constantType) {
             case INSTANCE_TAG -> {
                 List<List<Object>> instanceData = get(baseLayerConstant, DATA_TAG);
-                JavaConstant hostedObject = getHostedObject(baseLayerConstant, type);
-                if (hostedObject != null && relinkedHostedObject != null) {
-                    Object object = hostedValuesProvider.asObject(Object.class, hostedObject);
-                    Object relinkedObject = hostedValuesProvider.asObject(Object.class, relinkedHostedObject);
-                    AnalysisError.guarantee(object == relinkedObject, "Found discrepancy between hosted value %s and relinked value %s.", object, relinkedObject);
+                JavaConstant foundHostedObject = lookupHostedObject(baseLayerConstant, type);
+                if (foundHostedObject != null && parentReachableHostedObject != null) {
+                    Object foundObject = hostedValuesProvider.asObject(Object.class, foundHostedObject);
+                    Object reachableObject = hostedValuesProvider.asObject(Object.class, parentReachableHostedObject);
+                    AnalysisError.guarantee(foundObject == reachableObject, "Found discrepancy between recipe-found hosted value %s and parent-reachable hosted value %s.", foundObject,
+                                    reachableObject);
                 }
-                ImageHeapInstance imageHeapInstance = new ImageHeapInstance(type, hostedObject == null ? relinkedHostedObject : hostedObject, identityHashCode);
-                if (instanceData != null) {
-                    Object[] fieldValues = getReferencedValues(constantsMap, imageHeapInstance, instanceData, imageLayerSnapshotUtil.getRelinkedFields(type, metaAccess));
-                    imageHeapInstance.setFieldValues(fieldValues);
-                }
-                addBaseLayerObject(id, imageHeapInstance, objectOffset);
+
+                addBaseLayerObject(id, objectOffset, () -> {
+                    ImageHeapInstance imageHeapInstance = new ImageHeapInstance(type, foundHostedObject == null ? parentReachableHostedObject : foundHostedObject, identityHashCode);
+                    if (instanceData != null) {
+                        Object[] fieldValues = getReferencedValues(constantsMap, imageHeapInstance, instanceData, imageLayerSnapshotUtil.getRelinkedFields(type, metaAccess));
+                        imageHeapInstance.setFieldValues(fieldValues);
+                    }
+                    return imageHeapInstance;
+                });
             }
             case ARRAY_TAG -> {
                 List<List<Object>> arrayData = get(baseLayerConstant, DATA_TAG);
-                ImageHeapObjectArray imageHeapObjectArray = new ImageHeapObjectArray(type, null, arrayData.size(), identityHashCode);
-                Object[] elementsValues = getReferencedValues(constantsMap, imageHeapObjectArray, arrayData, Set.of());
-                imageHeapObjectArray.setElementValues(elementsValues);
-                addBaseLayerObject(id, imageHeapObjectArray, objectOffset);
+                addBaseLayerObject(id, objectOffset, () -> {
+                    ImageHeapObjectArray imageHeapObjectArray = new ImageHeapObjectArray(type, null, arrayData.size(), identityHashCode);
+                    Object[] elementsValues = getReferencedValues(constantsMap, imageHeapObjectArray, arrayData, Set.of());
+                    imageHeapObjectArray.setElementValues(elementsValues);
+                    return imageHeapObjectArray;
+                });
             }
             case PRIMITIVE_ARRAY_TAG -> {
                 List<Object> primitiveData = get(baseLayerConstant, DATA_TAG);
                 Object array = getArray(type.getComponentType().getJavaKind(), primitiveData);
-                ImageHeapPrimitiveArray imageHeapPrimitiveArray = new ImageHeapPrimitiveArray(type, null, array, primitiveData.size(), identityHashCode);
-                addBaseLayerObject(id, imageHeapPrimitiveArray, objectOffset);
+                addBaseLayerObject(id, objectOffset, () -> new ImageHeapPrimitiveArray(type, null, array, primitiveData.size(), identityHashCode));
             }
             default -> throw GraalError.shouldNotReachHere("Unknown constant type: " + constantType);
         }
@@ -943,31 +1080,31 @@ public class ImageLayerLoader {
         return constants.get(id);
     }
 
-    protected JavaConstant getHostedObject(EconomicMap<String, Object> baseLayerConstant, AnalysisType analysisType) {
-        Class<?> clazz = analysisType.getJavaClass();
+    /**
+     * Look up an object in current hosted VM based on the recipe serialized from the base layer.
+     */
+    protected JavaConstant lookupHostedObject(EconomicMap<String, Object> baseLayerConstant, AnalysisType analysisType) {
         boolean simulated = get(baseLayerConstant, SIMULATED_TAG);
         if (!simulated) {
-            return getHostedObject(baseLayerConstant, clazz);
+            Class<?> clazz = analysisType.getJavaClass();
+            return lookupHostedObject(baseLayerConstant, clazz);
         }
         return null;
     }
 
     @SuppressWarnings("unchecked")
-    protected JavaConstant getHostedObject(EconomicMap<String, Object> baseLayerConstant, Class<?> clazz) {
+    protected JavaConstant lookupHostedObject(EconomicMap<String, Object> baseLayerConstant, Class<?> clazz) {
         if (clazz.equals(String.class)) {
             String value = get(baseLayerConstant, VALUE_TAG);
             if (value != null) {
-                return getHostedObject(value.intern());
+                Object object = value.intern();
+                return hostedValuesProvider.forObject(object);
             }
         } else if (Enum.class.isAssignableFrom(clazz)) {
             Enum<?> enumValue = getEnumValue(baseLayerConstant);
-            return getHostedObject(enumValue);
+            return hostedValuesProvider.forObject(enumValue);
         }
         return null;
-    }
-
-    protected JavaConstant getHostedObject(Object object) {
-        return hostedValuesProvider.forObject(object);
     }
 
     @SuppressWarnings("unused")
@@ -1039,17 +1176,17 @@ public class ImageLayerLoader {
                     values[position] = new AnalysisFuture<>(() -> {
                         ensureHubInitialized(parentConstant);
 
-                        JavaConstant hostedObject = relink ? getValueHostedObject(parentConstant, finalPosition) : null;
-                        ImageHeapConstant constant = getOrCreateConstant(constantsMap, constantId, hostedObject);
-                        values[finalPosition] = constant;
+                        JavaConstant hostedConstant = relink ? getReachableHostedValue(parentConstant, finalPosition) : null;
+                        ImageHeapConstant baseLayerConstant = getOrCreateConstant(constantsMap, constantId, hostedConstant);
+                        values[finalPosition] = baseLayerConstant;
 
-                        ensureHubInitialized(constant);
+                        ensureHubInitialized(baseLayerConstant);
 
-                        if (hostedObject != null) {
-                            linkBaseLayerValue(constant, parentConstant, finalPosition);
+                        if (hostedConstant != null) {
+                            addBaseLayerValueToImageHeap(baseLayerConstant, parentConstant, finalPosition);
                         }
 
-                        return constant;
+                        return baseLayerConstant;
                     });
                 } else if (constantId == NULL_POINTER_CONSTANT) {
                     values[position] = JavaConstant.NULL_POINTER;
@@ -1079,12 +1216,16 @@ public class ImageLayerLoader {
         return false;
     }
 
-    private JavaConstant getValueHostedObject(ImageHeapConstant parentConstant, int i) {
+    /**
+     * For a parent constant return the referenced field-position or array-element-index value
+     * corresponding to <code>index</code>.
+     */
+    private JavaConstant getReachableHostedValue(ImageHeapConstant parentConstant, int index) {
         if (parentConstant instanceof ImageHeapObjectArray array) {
-            return getElementValueHostedObject(array, i);
+            return getHostedElementValue(array, index);
         } else if (parentConstant instanceof ImageHeapInstance instance) {
-            AnalysisField field = getFieldFromIndex(instance, i);
-            return getFieldValueHostedObject(instance, field);
+            AnalysisField field = getFieldFromIndex(instance, index);
+            return getHostedFieldValue(instance, field);
         } else {
             throw AnalysisError.shouldNotReachHere("unexpected constant: " + parentConstant);
         }
@@ -1094,7 +1235,7 @@ public class ImageLayerLoader {
         return (AnalysisField) instance.getType().getInstanceFields(true)[i];
     }
 
-    private JavaConstant getElementValueHostedObject(ImageHeapObjectArray array, int idx) {
+    private JavaConstant getHostedElementValue(ImageHeapObjectArray array, int idx) {
         JavaConstant hostedArray = array.getHostedObject();
         JavaConstant rawElementValue = null;
         if (hostedArray != null) {
@@ -1103,7 +1244,7 @@ public class ImageLayerLoader {
         return rawElementValue;
     }
 
-    private JavaConstant getFieldValueHostedObject(ImageHeapInstance instance, AnalysisField field) {
+    private JavaConstant getHostedFieldValue(ImageHeapInstance instance, AnalysisField field) {
         ValueSupplier<JavaConstant> rawFieldValue;
         try {
             JavaConstant hostedInstance = instance.getHostedObject();
@@ -1116,11 +1257,11 @@ public class ImageLayerLoader {
         return rawFieldValue.get();
     }
 
-    public void linkBaseLayerValue(ImageHeapConstant constant, ImageHeapConstant parentConstant, int i) {
+    public void addBaseLayerValueToImageHeap(ImageHeapConstant constant, ImageHeapConstant parentConstant, int i) {
         if (parentConstant instanceof ImageHeapInstance imageHeapInstance) {
-            universe.getHeapScanner().linkBaseLayerValue(constant, getFieldFromIndex(imageHeapInstance, i));
+            universe.getHeapScanner().registerBaseLayerValue(constant, getFieldFromIndex(imageHeapInstance, i));
         } else if (parentConstant instanceof ImageHeapObjectArray) {
-            universe.getHeapScanner().linkBaseLayerValue(constant, i);
+            universe.getHeapScanner().registerBaseLayerValue(constant, i);
         } else {
             throw AnalysisError.shouldNotReachHere("unexpected constant: " + constant);
         }
@@ -1160,10 +1301,10 @@ public class ImageLayerLoader {
         return Double.longBitsToDouble((long) value);
     }
 
-    private void addBaseLayerObject(int id, ImageHeapConstant heapObj, String objectOffset) {
-        heapObj.markInBaseLayer();
-        ImageHeapConstant constant = constants.putIfAbsent(id, heapObj);
-        if (constant == null) {
+    private void addBaseLayerObject(int id, String objectOffset, Supplier<ImageHeapConstant> imageHeapConstantSupplier) {
+        constants.computeIfAbsent(id, key -> {
+            ImageHeapConstant heapObj = imageHeapConstantSupplier.get();
+            heapObj.markInBaseLayer();
             /*
              * Packages are normally rescanned when the DynamicHub is initialized. However, since
              * they are not relinked, the packages from the base layer will never be marked as
@@ -1175,7 +1316,8 @@ public class ImageLayerLoader {
             if (objectOffset != null) {
                 objectOffsets.put(heapObj.constantData.id, Long.parseLong(objectOffset));
             }
-        }
+            return heapObj;
+        });
     }
 
     private EconomicMap<String, Object> getElementData(String registry, String elementIdentifier) {
@@ -1187,12 +1329,16 @@ public class ImageLayerLoader {
     }
 
     @SuppressWarnings("unchecked")
-    protected static Enum<?> getEnumValue(EconomicMap<String, Object> enumData) {
+    protected Enum<?> getEnumValue(EconomicMap<String, Object> enumData) {
         String className = get(enumData, ENUM_CLASS_TAG);
-        Class<?> enumClass = ReflectionUtil.lookupClass(false, className);
+        Class<?> enumClass = lookupClass(false, className);
         String name = get(enumData, ENUM_NAME_TAG);
         /* asSubclass produces an "unchecked" warning */
         return Enum.valueOf(enumClass.asSubclass(Enum.class), name);
+    }
+
+    public Class<?> lookupClass(boolean optional, String className) {
+        return ReflectionUtil.lookupClass(optional, className);
     }
 
     public static <T> T get(EconomicMap<String, Object> innerMap, String elementIdentifier) {

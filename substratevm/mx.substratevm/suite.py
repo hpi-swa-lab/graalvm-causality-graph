@@ -1,6 +1,6 @@
 # pylint: disable=line-too-long
 suite = {
-    "mxversion": "7.28.0",
+    "mxversion": "7.33.0",
     "name": "substratevm",
     "version" : "24.2.0",
     "release" : False,
@@ -289,6 +289,7 @@ suite = {
                 "jdk.jfr",
                 "jdk.management",
                 "jdk.zipfs",
+                "java.instrument",
             ],
             "requiresConcealed" : {
                 "java.base" : [
@@ -306,6 +307,7 @@ suite = {
                     "sun.security.util",
                     "sun.text.spi",
                     "sun.util",
+                    "sun.util.locale",
                     "sun.util.calendar",
                     "sun.util.locale.provider",
                     "sun.util.resources",
@@ -339,6 +341,14 @@ suite = {
                 "jdk.internal.vm.ci": [
                     "jdk.vm.ci.meta",
                     "jdk.vm.ci.code",
+                    "jdk.vm.ci.aarch64",
+                    "jdk.vm.ci.amd64",
+                    "jdk.vm.ci.code.site",
+                    "jdk.vm.ci.code.stack",
+                    "jdk.vm.ci.common",
+                    "jdk.vm.ci.riscv64",
+                    "jdk.vm.ci.runtime",
+                    "jdk.vm.ci.services"
                 ],
             },
             "javaCompliance" : "21+",
@@ -371,6 +381,7 @@ suite = {
                 ],
                 "jdk.internal.vm.ci" : [
                     "jdk.vm.ci.code",
+                    "jdk.vm.ci.meta"
                 ],
             },
             "checkstyle": "com.oracle.svm.core",
@@ -392,6 +403,9 @@ suite = {
             "requiresConcealed" : {
                 "jdk.internal.vm.ci" : [
                     "jdk.vm.ci.code.site",
+                    "jdk.vm.ci.amd64",
+                    "jdk.vm.ci.code",
+                    "jdk.vm.ci.meta"
                 ],
             },
             "checkstyle": "com.oracle.svm.core",
@@ -412,6 +426,9 @@ suite = {
             "requiresConcealed" : {
                 "jdk.internal.vm.ci" : [
                     "jdk.vm.ci.code.site",
+                    "jdk.vm.ci.aarch64",
+                    "jdk.vm.ci.code",
+                    "jdk.vm.ci.meta"
                 ],
             },
             "checkstyle": "com.oracle.svm.core",
@@ -432,6 +449,9 @@ suite = {
             "requiresConcealed" : {
                 "jdk.internal.vm.ci" : [
                     "jdk.vm.ci.code.site",
+                    "jdk.vm.ci.code",
+                    "jdk.vm.ci.meta",
+                    "jdk.vm.ci.riscv64"
                 ],
             },
             "checkstyle": "com.oracle.svm.core",
@@ -486,6 +506,9 @@ suite = {
                 "jdk.internal.vm.ci" : [
                     "jdk.vm.ci.code",
                     "jdk.vm.ci.meta",
+                    "jdk.vm.ci.aarch64",
+                    "jdk.vm.ci.amd64",
+                    "jdk.vm.ci.riscv64"
                 ],
             },
             "checkstyle": "com.oracle.svm.core",
@@ -509,6 +532,7 @@ suite = {
                 "jdk.internal.vm.ci" : [
                     "jdk.vm.ci.code",
                     "jdk.vm.ci.meta",
+                    "jdk.vm.ci.amd64"
                 ],
             },
             "checkstyle": "com.oracle.svm.core",
@@ -538,6 +562,8 @@ suite = {
                 "jdk.internal.vm.ci" : [
                     "jdk.vm.ci.meta",
                     "jdk.vm.ci.code",
+                    "jdk.vm.ci.common",
+                    "jdk.vm.ci.runtime"
                 ]
             },
             "checkstyle": "com.oracle.svm.core",
@@ -561,6 +587,9 @@ suite = {
                 ],
                 "jdk.internal.vm.ci" : [
                     "jdk.vm.ci.code",
+                    "jdk.vm.ci.amd64",
+                    "jdk.vm.ci.hotspot",
+                    "jdk.vm.ci.meta"
                 ]
             },
             "checkstyle": "com.oracle.svm.core",
@@ -656,6 +685,9 @@ suite = {
                     "sun.util.locale",
                     "sun.invoke.util",
                 ],
+                "java.instrument":[
+                    "java.lang.instrument"
+                ],
                 "java.management": [
                     "com.sun.jmx.mbeanserver", # Needed for javadoc links (MXBeanIntrospector,DefaultMXBeanMappingFactory, MXBeanProxy)
                     "sun.management", # Needed for javadoc links (MappedMXBeanType)
@@ -666,6 +698,10 @@ suite = {
                     "jdk.vm.ci.code.site",
                     "jdk.vm.ci.hotspot",
                     "jdk.vm.ci.runtime",
+                    "jdk.vm.ci.aarch64",
+                    "jdk.vm.ci.amd64",
+                    "jdk.vm.ci.common",
+                    "jdk.vm.ci.riscv64"
                 ],
                 "jdk.management": [
                     "com.sun.management.internal"
@@ -706,6 +742,9 @@ suite = {
                     "jdk.internal.foreign.abi.x64.windows",
                 ],
                 "jdk.internal.vm.ci" : [
+                    "jdk.vm.ci.amd64",
+                    "jdk.vm.ci.code",
+                    "jdk.vm.ci.meta"
                 ],
             },
             "javaCompliance" : "22+",
@@ -735,7 +774,8 @@ suite = {
                     "jdk.internal.foreign.abi",
                 ],
                 "jdk.internal.vm.ci" : [
-                    "jdk.vm.ci.code"
+                    "jdk.vm.ci.code",
+                    "jdk.vm.ci.meta"
                 ],
             },
             "javaCompliance" : "22+",
@@ -996,6 +1036,7 @@ suite = {
                 "jdk.jfr",
                 "java.management",
                 "jdk.management.jfr",
+                "java.instrument",
                 "java.rmi",
             ],
             "requiresConcealed" : {
@@ -1095,6 +1136,9 @@ suite = {
                 ],
                 "jdk.internal.vm.ci" : [
                     "jdk.vm.ci.code",
+                    "jdk.vm.ci.aarch64",
+                    "jdk.vm.ci.amd64",
+                    "jdk.vm.ci.meta"
                 ],
             },
             "checkstyle" : "com.oracle.svm.hosted",
@@ -1122,6 +1166,11 @@ suite = {
                     "jdk.vm.ci.aarch64",
                     "jdk.vm.ci.code.site",
                     "jdk.vm.ci.runtime",
+                    "jdk.vm.ci.amd64",
+                    "jdk.vm.ci.code",
+                    "jdk.vm.ci.code.stack",
+                    "jdk.vm.ci.hotspot",
+                    "jdk.vm.ci.meta"
                 ],
             },
             "checkstyle": "com.oracle.svm.hosted",
@@ -1209,6 +1258,8 @@ suite = {
                 "jdk.internal.vm.ci": [
                     "jdk.vm.ci.aarch64",
                     "jdk.vm.ci.meta",
+                    "jdk.vm.ci.code",
+                    "jdk.vm.ci.code.stack"
                 ]
             },
             "checkstyle": "com.oracle.svm.hosted",
@@ -1318,6 +1369,8 @@ suite = {
                 "jdk.internal.vm.ci" : [
                     "jdk.vm.ci.services",
                     "jdk.vm.ci.runtime",
+                    "jdk.vm.ci.hotspot",
+                    "jdk.vm.ci.meta"
                 ],
             },
             "annotationProcessors": [
@@ -1329,7 +1382,7 @@ suite = {
             "jacoco" : "exclude",
         },
 
-        "com.oracle.svm.graal.hotspot.guestgraal" : {
+        "com.oracle.svm.graal.hotspot.libgraal" : {
             "subDir": "src",
             "sourceDirs" : [
                 "src",
@@ -1354,47 +1407,16 @@ suite = {
                 "jdk.internal.vm.ci" : [
                     "jdk.vm.ci.services",
                     "jdk.vm.ci.runtime",
+                    "jdk.vm.ci.code"
                 ],
             },
             "annotationProcessors": [
                 "compiler:GRAAL_PROCESSOR",
+                "truffle:TRUFFLE_LIBGRAAL_PROCESSOR",
             ],
             "checkstyle" : "com.oracle.svm.hosted",
             "javaCompliance" : "21+",
             "workingSets" : "SVM",
-            "jacoco" : "exclude",
-        },
-
-        "com.oracle.svm.graal.hotspot.libgraal" : {
-            "subDir": "src",
-            "sourceDirs": ["src"],
-            "dependencies": [
-                "com.oracle.svm.graal.hotspot",
-                "com.oracle.svm.graal",
-                "compiler:GRAAL",
-                "sdk:NATIVEBRIDGE",
-            ],
-            "requires" : [
-            	"jdk.management"
-            ],
-            "requiresConcealed" : {
-                "java.base" : [
-                    "jdk.internal.misc",
-                ],
-                "jdk.internal.vm.ci": [
-                    "jdk.vm.ci.meta",
-                    "jdk.vm.ci.code",
-                    "jdk.vm.ci.hotspot",
-                ]
-            },
-            "checkstyle" : "com.oracle.svm.hosted",
-            "javaCompliance" : "21+",
-            "annotationProcessors": [
-                "truffle:TRUFFLE_LIBGRAAL_PROCESSOR",
-                "compiler:GRAAL_PROCESSOR",
-                "SVM_PROCESSOR",
-            ],
-            "defaultBuild": False,
             "jacoco" : "exclude",
         },
 
@@ -1622,6 +1644,7 @@ suite = {
                     "org.graalvm.nativeimage.Platform",
                     "jdk.graal.compiler.options.OptionDescriptors",
                     "com.oracle.svm.hosted.NativeImageClassLoaderPostProcessing",
+                    "com.oracle.svm.hosted.NativeImageGeneratorRunnerProvider",
                     "java.util.spi.ResourceBundleControlProvider",
                     "com.oracle.svm.core.feature.AutomaticallyRegisteredFeatureServiceRegistration",
                 ],
@@ -1881,32 +1904,12 @@ suite = {
           "maven" : False,
         },
 
-        "GRAAL_HOTSPOT_LIBRARY": {
+        "LIBGRAAL_LIBRARY": {
             "subDir": "src",
-            "description" : "SubstrateVM HotSpot Graal library support",
+            "description" : "LibGraal feature",
             "javaCompliance" : "21+",
             "dependencies": [
                 "com.oracle.svm.graal.hotspot.libgraal",
-            ],
-            "overlaps" : [
-                "LIBRARY_SUPPORT",
-                "GUESTGRAAL_LIBRARY"
-            ],
-            "distDependencies": [
-                "SVM",
-                "sdk:JNIUTILS",
-                "sdk:NATIVEBRIDGE",
-            ],
-            "defaultBuild": False,
-            "maven": False,
-        },
-
-        "GUESTGRAAL_LIBRARY": {
-            "subDir": "src",
-            "description" : "GuestGraal HotSpot Graal library support",
-            "javaCompliance" : "21+",
-            "dependencies": [
-                "com.oracle.svm.graal.hotspot.guestgraal",
             ],
             "distDependencies": [
                 "SVM",

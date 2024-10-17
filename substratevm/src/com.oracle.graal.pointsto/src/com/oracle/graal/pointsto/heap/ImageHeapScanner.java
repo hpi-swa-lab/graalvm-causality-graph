@@ -149,11 +149,7 @@ public abstract class ImageHeapScanner {
                  * GR-52421: the field state needs to be serialized from the base layer analysis
                  */
                 if (field.getJavaKind().isObject()) {
-                    AnalysisType fieldType = field.getType();
-            if (fieldType.isArray() || (fieldType.isInstanceClass() && !fieldType.isAbstract())) {
-                        fieldType.registerAsInstantiated(field);
-                    }
-                    bb.injectFieldTypes(field, List.of(fieldType), true);
+                    bb.injectFieldTypes(field, List.of(field.getType()), true);
                 }
                 return;
             }
@@ -358,7 +354,7 @@ public abstract class ImageHeapScanner {
         return array;
     }
 
-    public void linkBaseLayerValue(ImageHeapConstant constant, Object reason) {
+    public void registerBaseLayerValue(ImageHeapConstant constant, Object reason) {
         JavaConstant hostedValue = constant.getHostedObject();
         Object existingSnapshot = imageHeap.getSnapshot(hostedValue);
         if (existingSnapshot != null) {
@@ -389,7 +385,7 @@ public abstract class ImageHeapScanner {
                     // Objects created by the analysis itself would add too many types as roots...
                     cause = CausalityEvents.Ignored;
                 }
-                
+
                 CausalityEvent typeObjectInHeap = (snippetReflection.asObject(Object.class, constant) instanceof Class<?> ? CausalityEvents.HeapObjectClass : CausalityEvents.HeapObjectDynamicHub)
                         .create(typeFromClassConstant.getJavaClass());
                 CausalityExport.registerEdge(cause, typeObjectInHeap);
@@ -457,7 +453,7 @@ public abstract class ImageHeapScanner {
                 /* Enhance the unsupported feature message with the object trace and rethrow. */
                 StringBuilder backtrace = new StringBuilder();
                 ObjectScanner.buildObjectBacktrace(bb, reason, backtrace);
-                throw new UnsupportedFeatureException(e.getMessage() + System.lineSeparator() + backtrace);
+                throw new UnsupportedFeatureException(e.getMessage() + System.lineSeparator() + backtrace, e);
             }
 
         }

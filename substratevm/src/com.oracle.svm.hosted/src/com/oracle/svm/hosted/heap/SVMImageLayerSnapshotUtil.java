@@ -90,7 +90,7 @@ import jdk.vm.ci.hotspot.HotSpotResolvedJavaMethod;
 import jdk.vm.ci.meta.ResolvedJavaMethod;
 
 public class SVMImageLayerSnapshotUtil extends ImageLayerSnapshotUtil {
-    private static final String GENERATED_SERIALIZATION = "jdk.internal.reflect.GeneratedSerializationConstructorAccessor";
+    public static final String GENERATED_SERIALIZATION = "jdk.internal.reflect.GeneratedSerializationConstructorAccessor";
 
     public static final Field companion = ReflectionUtil.lookupField(DynamicHub.class, "companion");
     public static final Field classInitializationInfo = ReflectionUtil.lookupField(DynamicHub.class, "classInitializationInfo");
@@ -149,7 +149,7 @@ public class SVMImageLayerSnapshotUtil extends ImageLayerSnapshotUtil {
     @Override
     public String getTypeIdentifier(AnalysisType type) {
         if (type.toJavaName(true).contains(GENERATED_SERIALIZATION)) {
-            getGeneratedSerializationName(type);
+            return getGeneratedSerializationName(type);
         }
         if (isProxyType(type)) {
             return type.toJavaName(true);
@@ -226,8 +226,8 @@ public class SVMImageLayerSnapshotUtil extends ImageLayerSnapshotUtil {
     }
 
     @Override
-    public GraphDecoder getGraphDecoder(ImageLayerLoader imageLayerLoader, SnippetReflectionProvider snippetReflectionProvider) {
-        return new SVMGraphDecoder(EncodedGraph.class.getClassLoader(), (SVMImageLayerLoader) imageLayerLoader, snippetReflectionProvider);
+    public GraphDecoder getGraphDecoder(ImageLayerLoader imageLayerLoader, AnalysisMethod analysisMethod, SnippetReflectionProvider snippetReflectionProvider) {
+        return new SVMGraphDecoder(EncodedGraph.class.getClassLoader(), (SVMImageLayerLoader) imageLayerLoader, analysisMethod, snippetReflectionProvider);
     }
 
     public static class SVMGraphEncoder extends GraphEncoder {
@@ -245,8 +245,8 @@ public class SVMImageLayerSnapshotUtil extends ImageLayerSnapshotUtil {
 
     public static class SVMGraphDecoder extends GraphDecoder {
         @SuppressWarnings("this-escape")
-        public SVMGraphDecoder(ClassLoader classLoader, SVMImageLayerLoader svmImageLayerLoader, SnippetReflectionProvider snippetReflectionProvider) {
-            super(classLoader, svmImageLayerLoader);
+        public SVMGraphDecoder(ClassLoader classLoader, SVMImageLayerLoader svmImageLayerLoader, AnalysisMethod analysisMethod, SnippetReflectionProvider snippetReflectionProvider) {
+            super(classLoader, svmImageLayerLoader, analysisMethod);
             addBuiltin(new HostedTypeBuiltIn(svmImageLayerLoader));
             addBuiltin(new HostedMethodBuiltIn(svmImageLayerLoader));
             addBuiltin(new HostedOptionValuesBuiltIn());

@@ -47,7 +47,6 @@ import com.oracle.graal.pointsto.reports.causality.CausalityExport;
 import com.oracle.graal.pointsto.api.HostVM;
 import com.oracle.graal.pointsto.api.PointstoOptions;
 import com.oracle.graal.pointsto.constraints.UnsupportedFeatures;
-import com.oracle.graal.pointsto.flow.AllSynchronizedTypeFlow;
 import com.oracle.graal.pointsto.flow.AnyPrimitiveSourceTypeFlow;
 import com.oracle.graal.pointsto.flow.FieldTypeFlow;
 import com.oracle.graal.pointsto.flow.FormalParamTypeFlow;
@@ -105,8 +104,10 @@ public abstract class PointsToAnalysis extends AbstractAnalysisEngine {
      * immediately represented as {@link com.oracle.graal.pointsto.flow.AnyPrimitiveSourceTypeFlow}.
      */
     private final boolean trackPrimitiveValues;
+    private final AnalysisType longType;
+    private final AnalysisType voidType;
+    private final boolean usePredicates;
     private AnyPrimitiveSourceTypeFlow anyPrimitiveSourceTypeFlow;
-    private TypeFlow<?> allSynchronizedTypeFlow;
 
     protected final boolean trackTypeFlowInputs;
     protected final boolean reportAnalysisStatistics;
@@ -125,16 +126,20 @@ public abstract class PointsToAnalysis extends AbstractAnalysisEngine {
                     ClassInclusionPolicy classInclusionPolicy) {
         super(options, universe, hostVM, metaAccess, snippetReflectionProvider, constantReflectionProvider, wordTypes, unsupportedFeatures, debugContext, timerCollection, classInclusionPolicy);
         this.typeFlowTimer = timerCollection.createTimer("(typeflow)");
-        this.trackPrimitiveValues = PointstoOptions.TrackPrimitiveValues.getValue(options);
-        this.anyPrimitiveSourceTypeFlow = new AnyPrimitiveSourceTypeFlow(null, null);
 
         this.objectType = metaAccess.lookupJavaType(Object.class);
+        this.longType = metaAccess.lookupJavaType(long.class);
+        this.voidType = metaAccess.lookupJavaType(void.class);
+
+        this.trackPrimitiveValues = PointstoOptions.TrackPrimitiveValues.getValue(options);
+        this.usePredicates = PointstoOptions.UsePredicates.getValue(options);
+        this.anyPrimitiveSourceTypeFlow = new AnyPrimitiveSourceTypeFlow(null, longType);
+        this.anyPrimitiveSourceTypeFlow.enableFlow(null);
         /*
          * Make sure the all-instantiated type flow is created early. We do not have any
          * instantiated types yet, so the state is empty at first.
          */
         objectType.getTypeFlow(this, true);
-        allSynchronizedTypeFlow = new AllSynchronizedTypeFlow();
 
         trackTypeFlowInputs = PointstoOptions.TrackInputFlows.getValue(options);
         reportAnalysisStatistics = PointstoOptions.PrintPointsToStatistics.getValue(options);
@@ -260,7 +265,6 @@ public abstract class PointsToAnalysis extends AbstractAnalysisEngine {
     @Override
     public void cleanupAfterAnalysis() {
         super.cleanupAfterAnalysis();
-        allSynchronizedTypeFlow = null;
         anyPrimitiveSourceTypeFlow = null;
         unsafeLoads = null;
         unsafeStores = null;
@@ -276,6 +280,14 @@ public abstract class PointsToAnalysis extends AbstractAnalysisEngine {
         return universe.objectType();
     }
 
+    public AnalysisType getLongType() {
+        return longType;
+    }
+
+    public AnalysisType getVoidType() {
+        return voidType;
+    }
+
     public AnalysisType getObjectArrayType() {
         return metaAccess.lookupJavaType(Object[].class);
     }
@@ -289,25 +301,13 @@ public abstract class PointsToAnalysis extends AbstractAnalysisEngine {
         return getAllInstantiatedTypeFlow().getState().types(this);
     }
 
-    public TypeFlow<?> getAllSynchronizedTypeFlow() {
-        return allSynchronizedTypeFlow;
-    }
-
     public AnyPrimitiveSourceTypeFlow getAnyPrimitiveSourceTypeFlow() {
         return anyPrimitiveSourceTypeFlow;
     }
 
     @Override
     public Iterable<AnalysisType> getAllSynchronizedTypes() {
-        /*
-         * If all-synchrnonized type flow, i.e., the type flow that keeps track of the types of all
-         * monitor objects, is saturated then we need to assume that any type can be used for
-         * monitors.
-         */
-        if (allSynchronizedTypeFlow.isSaturated()) {
-            return getAllInstantiatedTypes();
-        }
-        return allSynchronizedTypeFlow.getState().types(this);
+        return getAllInstantiatedTypes();
     }
 
     @Override
@@ -316,9 +316,9 @@ public abstract class PointsToAnalysis extends AbstractAnalysisEngine {
     }
 
     @Override
-    public AnalysisMethod forcedAddRootMethod(Executable method, boolean invokeSpecial, Object reason, MultiMethod.MultiMethodKey... otherRoots) {
+    public AnalysisMethod forcedAddRootMethod(AnalysisMethod method, boolean invokeSpecial, Object reason, MultiMethod.MultiMethodKey... otherRoots) {
         AnalysisError.guarantee(isBaseLayerAnalysisEnabled());
-        PointsToAnalysisMethod analysisMethod = assertPointsToAnalysisMethod(metaAccess.lookupJavaMethod(method));
+        PointsToAnalysisMethod analysisMethod = assertPointsToAnalysisMethod(method);
         postTask(ignore -> {
             MethodTypeFlow typeFlow = analysisMethod.getTypeFlow();
             /*
@@ -560,6 +560,10 @@ public abstract class PointsToAnalysis extends AbstractAnalysisEngine {
     @Override
     public boolean trackPrimitiveValues() {
         return trackPrimitiveValues;
+    }
+
+    public boolean usePredicates() {
+        return usePredicates;
     }
 
     public interface TypeFlowRunnable extends DebugContextRunnable {

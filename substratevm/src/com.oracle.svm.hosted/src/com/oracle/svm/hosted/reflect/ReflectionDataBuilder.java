@@ -89,7 +89,6 @@ import com.oracle.svm.core.configure.RuntimeConditionSet;
 import com.oracle.svm.core.hub.ClassForNameSupport;
 import com.oracle.svm.core.hub.DynamicHub;
 import com.oracle.svm.core.reflect.SubstrateAccessor;
-import com.oracle.svm.core.util.UserError;
 import com.oracle.svm.core.util.VMError;
 import com.oracle.svm.hosted.ConditionalConfigurationRegistry;
 import com.oracle.svm.hosted.FeatureImpl.BeforeAnalysisAccessImpl;
@@ -185,7 +184,7 @@ public class ReflectionDataBuilder extends ConditionalConfigurationRegistry impl
 
     private void runConditionalInAnalysisTask(ConfigurationCondition condition, Consumer<ConfigurationCondition> task) {
         if (sealed) {
-            throw UserError.abort("Too late to add classes, methods, and fields for reflective access. Registration must happen in a Feature before the analysis has finished.");
+            throw new UnsupportedFeatureException("Too late to add classes, methods, and fields for reflective access. Registration must happen in a Feature before the analysis has finished.");
         }
 
         if (universe != null) {
@@ -451,7 +450,7 @@ public class ReflectionDataBuilder extends ConditionalConfigurationRegistry impl
         if (SubstitutionReflectivityFilter.shouldExclude(reflectExecutable, metaAccess, universe)) {
             return;
         }
-        
+
         AnalysisMethod analysisMethod = metaAccess.lookupJavaMethod(reflectExecutable);
         AnalysisType declaringType = analysisMethod.getDeclaringClass();
         var classMethods = registeredMethods.computeIfAbsent(declaringType, t -> new ConcurrentHashMap<>());
@@ -588,7 +587,7 @@ public class ReflectionDataBuilder extends ConditionalConfigurationRegistry impl
             }
         });
     }
-    
+
     @SuppressWarnings("try")
     private void registerFields(ConfigurationCondition cnd, boolean queriedOnly, Field[] reflectFields) {
         for (Field reflectField : reflectFields) {
@@ -1216,12 +1215,16 @@ public class ReflectionDataBuilder extends ConditionalConfigurationRegistry impl
     @Override
     @SuppressWarnings("try")
     public void registerHeapDynamicHub(Object object, ScanReason reason) {
-        assert !sealed;
         DynamicHub hub = (DynamicHub) object;
         Class<?> javaClass = hub.getHostedJavaClass();
-        if (heapDynamicHubs.add(hub) && !SubstitutionReflectivityFilter.shouldExclude(javaClass, metaAccess, universe)) {
-            try (var ignored = CausalityExport.setCause(CausalityEvents.TypeReachable.create(metaAccess.lookupJavaType(javaClass)))) {
-                registerTypesForClass(metaAccess.lookupJavaType(javaClass), javaClass);
+        if (heapDynamicHubs.add(hub)) {
+            if (sealed) {
+                throw new UnsupportedFeatureException("Registering new class for reflection when the image heap is already sealed: " + javaClass);
+            }
+            if (!SubstitutionReflectivityFilter.shouldExclude(javaClass, metaAccess, universe)) {
+                try (var ignored = CausalityExport.setCause(CausalityEvents.TypeReachable.create(metaAccess.lookupJavaType(javaClass)))) {
+                    registerTypesForClass(metaAccess.lookupJavaType(javaClass), javaClass);
+                }
             }
         }
     }
@@ -1235,17 +1238,21 @@ public class ReflectionDataBuilder extends ConditionalConfigurationRegistry impl
     @Override
     @SuppressWarnings("try")
     public void registerHeapReflectionField(Field reflectField, ScanReason reason) {
-        assert !sealed;
         var inHeap = CausalityEvents.ReflectionObjectInHeap.create(reflectField);
         var reflRegistration = CausalityEvents.ReflectionRegistration.create(reflectField);
         CausalityExport.registerEdgeFromHeapObject(reflectField, reason, inHeap);
         CausalityExport.registerEdge(inHeap, reflRegistration);
         try (var ignored = CausalityExport.setCause(reflRegistration)) {
             AnalysisField analysisField = metaAccess.lookupJavaField(reflectField);
-            if (heapFields.put(analysisField, reflectField) == null && !SubstitutionReflectivityFilter.shouldExclude(reflectField, metaAccess, universe)) {
-                registerTypesForField(analysisField, reflectField, false);
-                if (analysisField.getDeclaringClass().isAnnotation()) {
-                    processAnnotationField(ConfigurationCondition.alwaysTrue(), reflectField);
+            if (heapFields.put(analysisField, reflectField) == null) {
+                if (sealed) {
+                    throw new UnsupportedFeatureException("Registering new field for reflection when the image heap is already sealed: " + reflectField);
+                }
+                if (!SubstitutionReflectivityFilter.shouldExclude(reflectField, metaAccess, universe)) {
+                    registerTypesForField(analysisField, reflectField, false);
+                    if (analysisField.getDeclaringClass().isAnnotation()) {
+                        processAnnotationField(ConfigurationCondition.alwaysTrue(), reflectField);
+                    }
                 }
             }
         }
@@ -1254,17 +1261,21 @@ public class ReflectionDataBuilder extends ConditionalConfigurationRegistry impl
     @Override
     @SuppressWarnings("try")
     public void registerHeapReflectionExecutable(Executable reflectExecutable, ScanReason reason) {
-        assert !sealed;
         var inHeap = CausalityEvents.ReflectionObjectInHeap.create(reflectExecutable);
         var reflRegistration = CausalityEvents.ReflectionRegistration.create(reflectExecutable);
         CausalityExport.registerEdgeFromHeapObject(reflectExecutable, reason, inHeap);
         CausalityExport.registerEdge(inHeap, reflRegistration);
         try (var ignored = CausalityExport.setCause(reflRegistration)) {
             AnalysisMethod analysisMethod = metaAccess.lookupJavaMethod(reflectExecutable);
-            if (heapMethods.put(analysisMethod, reflectExecutable) == null && !SubstitutionReflectivityFilter.shouldExclude(reflectExecutable, metaAccess, universe)) {
-                registerTypesForMethod(analysisMethod, reflectExecutable);
-                if (reflectExecutable instanceof Method && reflectExecutable.getDeclaringClass().isAnnotation()) {
-                    processAnnotationMethod(false, (Method) reflectExecutable);
+            if (heapMethods.put(analysisMethod, reflectExecutable) == null) {
+                if (sealed) {
+                    throw new UnsupportedFeatureException("Registering new method for reflection when the image heap is already sealed: " + reflectExecutable);
+                }
+                if (!SubstitutionReflectivityFilter.shouldExclude(reflectExecutable, metaAccess, universe)) {
+                    registerTypesForMethod(analysisMethod, reflectExecutable);
+                    if (reflectExecutable instanceof Method && reflectExecutable.getDeclaringClass().isAnnotation()) {
+                        processAnnotationMethod(false, (Method) reflectExecutable);
+                    }
                 }
             }
         }

@@ -506,7 +506,7 @@ public final class NativeImageHeap implements ImageHeap {
                  * can never be duplicated, i.e. written as a separate object. We use the blacklist
                  * to check this.
                  */
-                if (SubstrateOptions.closedTypeWorld()) {
+                if (SubstrateOptions.useClosedTypeWorldHubLayout()) {
                     Object typeIDSlots = readInlinedField(dynamicHubLayout.closedTypeWorldTypeCheckSlotsField, constant);
                     assert typeIDSlots != null : "Cannot read value for field " + dynamicHubLayout.closedTypeWorldTypeCheckSlotsField.format("%H.%n");
                     blacklist.add(typeIDSlots);
@@ -657,7 +657,7 @@ public final class NativeImageHeap implements ImageHeap {
         return hostedType;
     }
 
-    static RuntimeException reportIllegalType(Object object, Object reason) {
+    public static RuntimeException reportIllegalType(Object object, Object reason) {
         throw reportIllegalType(object, reason, "");
     }
 
@@ -885,7 +885,7 @@ public final class NativeImageHeap implements ImageHeap {
             return size;
         }
 
-        int getIdentityHashCode() {
+        public int getIdentityHashCode() {
             return identityHashCode;
         }
 

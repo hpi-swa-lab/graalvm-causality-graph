@@ -98,7 +98,6 @@ import com.oracle.graal.pointsto.heap.HeapSnapshotVerifier;
 import com.oracle.graal.pointsto.heap.HostedValuesProvider;
 import com.oracle.graal.pointsto.heap.ImageHeap;
 import com.oracle.graal.pointsto.heap.ImageHeapScanner;
-import com.oracle.graal.pointsto.heap.ImageLayerLoader;
 import com.oracle.graal.pointsto.heap.ImageLayerWriter;
 import com.oracle.graal.pointsto.infrastructure.SubstitutionProcessor;
 import com.oracle.graal.pointsto.infrastructure.WrappedJavaMethod;
@@ -206,6 +205,7 @@ import com.oracle.svm.hosted.FeatureImpl.OnAnalysisExitAccessImpl;
 import com.oracle.svm.hosted.ProgressReporter.ReporterClosable;
 import com.oracle.svm.hosted.ameta.AnalysisConstantFieldProvider;
 import com.oracle.svm.hosted.ameta.AnalysisConstantReflectionProvider;
+import com.oracle.svm.hosted.ameta.FieldValueInterceptionSupport;
 import com.oracle.svm.hosted.ameta.SVMHostedValueProvider;
 import com.oracle.svm.hosted.analysis.Inflation;
 import com.oracle.svm.hosted.analysis.NativeImagePointsToAnalysis;
@@ -236,6 +236,7 @@ import com.oracle.svm.hosted.code.SubstrateGraphMakerFactory;
 import com.oracle.svm.hosted.heap.ObservableImageHeapMapProviderImpl;
 import com.oracle.svm.hosted.heap.SVMImageHeapScanner;
 import com.oracle.svm.hosted.heap.SVMImageHeapVerifier;
+import com.oracle.svm.hosted.heap.SVMImageLayerLoader;
 import com.oracle.svm.hosted.image.AbstractImage;
 import com.oracle.svm.hosted.image.AbstractImage.NativeImageKind;
 import com.oracle.svm.hosted.image.NativeImageCodeCache;
@@ -315,6 +316,7 @@ import jdk.graal.compiler.phases.common.CanonicalizerPhase;
 import jdk.graal.compiler.phases.common.DeoptimizationGroupingPhase;
 import jdk.graal.compiler.phases.common.FrameStateAssignmentPhase;
 import jdk.graal.compiler.phases.common.LoopSafepointInsertionPhase;
+import jdk.graal.compiler.phases.common.TransplantGraphsPhase;
 import jdk.graal.compiler.phases.common.inlining.InliningPhase;
 import jdk.graal.compiler.phases.tiers.HighTierContext;
 import jdk.graal.compiler.phases.tiers.LowTierContext;
@@ -533,8 +535,11 @@ public class NativeImageGenerator {
 
         var hostedOptionValues = new HostedOptionValues(optionProvider.getHostedValues());
         HostedImageLayerBuildingSupport imageLayerSupport = HostedImageLayerBuildingSupport.initialize(hostedOptionValues);
-        ImageSingletonsSupportImpl.HostedManagement.install(new ImageSingletonsSupportImpl.HostedManagement(imageLayerSupport.getLoader() != null || imageLayerSupport.getWriter() != null),
-                        imageLayerSupport);
+        SVMImageLayerLoader imageLayerLoader = imageLayerSupport.getLoader();
+        if (imageLayerLoader != null) {
+            imageLayerLoader.setImageClassLoader(loader);
+        }
+        ImageSingletonsSupportImpl.HostedManagement.install(new ImageSingletonsSupportImpl.HostedManagement(imageLayerLoader != null || imageLayerSupport.getWriter() != null), imageLayerSupport);
 
         ImageSingletons.add(LayeredImageSingletonSupport.class, (LayeredImageSingletonSupport) ImageSingletonsSupportImpl.get());
         ImageSingletons.add(ProgressReporter.class, reporter);
@@ -549,7 +554,7 @@ public class NativeImageGenerator {
         try (TemporaryBuildDirectoryProviderImpl tempDirectoryProvider = new TemporaryBuildDirectoryProviderImpl()) {
             ImageSingletons.add(TemporaryBuildDirectoryProvider.class, tempDirectoryProvider);
             if (ImageLayerBuildingSupport.buildingSharedLayer()) {
-                HostedImageLayerBuildingSupport.setupImageLayerArtifact(imageName);
+                HostedImageLayerBuildingSupport.setupImageLayerArtifacts(imageName);
             }
             doRun(entryPoints, javaMainSupport, imageName, k, harnessSubstitutions);
             if (ImageLayerBuildingSupport.buildingSharedLayer()) {
@@ -1005,7 +1010,7 @@ public class NativeImageGenerator {
                     imageLayerWriter.setAnalysisUniverse(aUniverse);
                 }
 
-                ImageLayerLoader imageLayerLoader = null;
+                SVMImageLayerLoader imageLayerLoader = null;
                 if (ImageLayerBuildingSupport.buildingExtensionLayer()) {
                     imageLayerLoader = HostedImageLayerBuildingSupport.singleton().getLoader();
                     imageLayerLoader.setUniverse(aUniverse);
@@ -1155,7 +1160,9 @@ public class NativeImageGenerator {
     public static AnnotationSubstitutionProcessor createAnnotationSubstitutionProcessor(MetaAccessProvider originalMetaAccess, ImageClassLoader loader,
                     ClassInitializationSupport classInitializationSupport) {
         AnnotationSubstitutionProcessor annotationSubstitutions = new AnnotationSubstitutionProcessor(loader, originalMetaAccess, classInitializationSupport);
-        annotationSubstitutions.init();
+        var fieldValueInterceptionSupport = new FieldValueInterceptionSupport(annotationSubstitutions);
+        ImageSingletons.add(FieldValueInterceptionSupport.class, fieldValueInterceptionSupport);
+        annotationSubstitutions.init(fieldValueInterceptionSupport);
         return annotationSubstitutions;
     }
 
@@ -1180,7 +1187,7 @@ public class NativeImageGenerator {
         /*
          * Eagerly register all target fields of recomputed value fields as unsafe accessed.
          */
-        bb.getAnnotationSubstitutionProcessor().processComputedValueFields(bb);
+        bb.getAnnotationSubstitutionProcessor().registerUnsafeAccessedFields(bb);
 
         /*
          * Install feature supported substitutions.
@@ -1268,7 +1275,7 @@ public class NativeImageGenerator {
                 CausalityEvent snippetRegistrationEvent = CausalityEvents.MethodSnippet.create((AnalysisMethod) graph.method());
                 CausalityExport.registerEvent(snippetRegistrationEvent);
                 CausalityExport.registerEdge(snippetRegistrationEvent, CausalityEvents.InlinedMethodCode.create((AnalysisMethod) graph.method()));
-                MethodTypeFlowBuilder.registerUsedElements(pointsToAnalysis, graph);
+                MethodTypeFlowBuilder.registerUsedElements(pointsToAnalysis, graph, false);
             }
         } else if (bb instanceof NativeImageReachabilityAnalysisEngine reachabilityAnalysis) {
             for (StructuredGraph graph : snippetGraphs) {
@@ -1291,7 +1298,7 @@ public class NativeImageGenerator {
 
         HostedSnippetReflectionProvider aSnippetReflection = new HostedSnippetReflectionProvider(null, aWordTypes);
 
-        MetaAccessExtensionProvider aMetaAccessExtensionProvider = HostedConfiguration.instance().createAnalysisMetaAccessExtensionProvider();
+        MetaAccessExtensionProvider aMetaAccessExtensionProvider = HostedConfiguration.instance().createAnalysisMetaAccessExtensionProvider(aUniverse);
 
         LoweringProvider aLoweringProvider = SubstrateLoweringProvider.createForHosted(aMetaAccess, null, platformConfig, aMetaAccessExtensionProvider);
 
@@ -1574,7 +1581,7 @@ public class NativeImageGenerator {
             Map<Class<? extends Node>, NodeLoweringProvider<?>> lowerings = lowerer.getLowerings();
 
             lowerer.setConfiguration(runtimeConfig, options, providers);
-            if (SubstrateOptions.closedTypeWorld()) {
+            if (SubstrateOptions.useClosedTypeWorldHubLayout()) {
                 TypeSnippets.registerLowerings(options, providers, lowerings);
             } else {
                 OpenTypeWorldSnippets.registerLowerings(options, providers, lowerings);
@@ -1672,6 +1679,7 @@ public class NativeImageGenerator {
 
         BasePhase<CoreProviders> addressLoweringPhase = backend.newAddressLoweringPhase(runtimeCallProviders.getCodeCache());
         lowTier.replacePlaceholder(AddressLoweringPhase.class, addressLoweringPhase);
+        lowTier.replacePlaceholder(TransplantGraphsPhase.class, new TransplantGraphsPhase(createSuitesForLateSnippetTemplate(suites)));
 
         /*
          * Graal inserts only loop safepoints. We want a SafepointNode also before every return. Our
@@ -1719,6 +1727,18 @@ public class NativeImageGenerator {
         }
 
         return suites;
+    }
+
+    private static Suites createSuitesForLateSnippetTemplate(Suites regularCompileSuites) {
+
+        Suites s = regularCompileSuites.copy();
+
+        removePhases(s, Speculative.class);
+        removePhases(s, FloatingGuardPhase.class);
+
+        s.getLowTier().removeAllPlaceHolderOfType(TransplantGraphsPhase.class);
+
+        return s;
     }
 
     private static void removePhases(Suites suites, Class<?> c) {
@@ -1819,8 +1839,8 @@ public class NativeImageGenerator {
         /*
          * We do not want any parts of the native image generator in the generated image. Therefore,
          * no element whose name contains "hosted" must be seen as reachable by the static analysis.
-         * The same holds for "hotspot" elements, which come from the hosting HotSpot VM, unless
-         * they are JDK internal types.
+         * The same holds for "host VM" elements, which come from the hosting VM, unless they are
+         * JDK internal types.
          */
         String message = checkName(name);
         if (message != null) {
@@ -1943,7 +1963,7 @@ public class NativeImageGenerator {
                 writer.print("reachable  ");
             }
 
-            if (SubstrateOptions.closedTypeWorld()) {
+            if (SubstrateOptions.useClosedTypeWorldHubLayout()) {
                 writer.format("type check start %d range %d slot # %d ", type.getTypeCheckStart(), type.getTypeCheckRange(), type.getTypeCheckSlot());
                 writer.format("type check slots %s  ", slotsToString(type.getClosedTypeWorldTypeCheckSlots()));
             } else {

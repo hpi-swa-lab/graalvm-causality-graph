@@ -50,6 +50,7 @@ import com.oracle.svm.core.SubstrateOptions;
 import com.oracle.svm.hosted.HostedConfiguration;
 import com.oracle.svm.hosted.SVMHost;
 import com.oracle.svm.hosted.ameta.CustomTypeFieldHandler;
+import com.oracle.svm.hosted.classinitialization.ClassInitializationSupport;
 import com.oracle.svm.hosted.code.IncompatibleClassChangeFallbackMethod;
 import com.oracle.svm.hosted.meta.HostedType;
 import com.oracle.svm.hosted.substitute.AnnotationSubstitutionProcessor;
@@ -148,6 +149,15 @@ public class NativeImagePointsToAnalysis extends PointsToAnalysis implements Inf
                                 .map(OriginalFieldProvider::getJavaField)
                                 .filter(field -> field != null && classInclusionPolicy.isFieldIncluded(field))
                                 .forEach(classInclusionPolicy::includeField);
+
+                /*
+                 * Only the class initializers that are executed at run time should be included in
+                 * the base layer.
+                 */
+                AnalysisMethod classInitializer = type.getClassInitializer();
+                if (classInitializer != null && !ClassInitializationSupport.singleton().maybeInitializeAtBuildTime(type) && classInitializer.getCode() != null) {
+                    classInclusionPolicy.includeMethod(classInitializer);
+                }
             }
         });
     }

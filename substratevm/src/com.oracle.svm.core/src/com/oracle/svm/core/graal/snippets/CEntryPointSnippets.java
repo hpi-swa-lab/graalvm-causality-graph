@@ -37,26 +37,29 @@ import org.graalvm.nativeimage.ImageSingletons;
 import org.graalvm.nativeimage.Isolate;
 import org.graalvm.nativeimage.IsolateThread;
 import org.graalvm.nativeimage.StackValue;
+import org.graalvm.nativeimage.c.struct.SizeOf;
 import org.graalvm.nativeimage.c.type.CCharPointer;
 import org.graalvm.nativeimage.c.type.CLongPointer;
 import org.graalvm.nativeimage.c.type.WordPointer;
 import org.graalvm.word.LocationIdentity;
+import org.graalvm.word.Pointer;
 import org.graalvm.word.PointerBase;
 import org.graalvm.word.UnsignedWord;
 import org.graalvm.word.WordFactory;
 
 import com.oracle.svm.core.CPUFeatureAccess;
 import com.oracle.svm.core.IsolateArgumentParser;
+import com.oracle.svm.core.IsolateArguments;
 import com.oracle.svm.core.IsolateListenerSupport;
 import com.oracle.svm.core.Isolates;
 import com.oracle.svm.core.JavaMainWrapper.JavaMainSupport;
 import com.oracle.svm.core.NeverInline;
 import com.oracle.svm.core.RuntimeAssertionsSupport;
 import com.oracle.svm.core.SubstrateDiagnostics;
-import com.oracle.svm.core.SubstrateGCOptions;
 import com.oracle.svm.core.SubstrateOptions;
 import com.oracle.svm.core.SubstrateUtil;
 import com.oracle.svm.core.Uninterruptible;
+import com.oracle.svm.core.UnmanagedMemoryUtil;
 import com.oracle.svm.core.c.CGlobalData;
 import com.oracle.svm.core.c.CGlobalDataFactory;
 import com.oracle.svm.core.c.NonmovableArrays;
@@ -65,6 +68,7 @@ import com.oracle.svm.core.c.function.CEntryPointCreateIsolateParameters;
 import com.oracle.svm.core.c.function.CEntryPointErrors;
 import com.oracle.svm.core.c.function.CEntryPointNativeFunctions;
 import com.oracle.svm.core.code.CodeInfoTable;
+import com.oracle.svm.core.container.Container;
 import com.oracle.svm.core.graal.meta.SubstrateForeignCallsProvider;
 import com.oracle.svm.core.graal.nodes.CEntryPointEnterNode;
 import com.oracle.svm.core.graal.nodes.CEntryPointLeaveNode;
@@ -206,6 +210,12 @@ public final class CEntryPointSnippets extends SubstrateTemplates implements Sni
         return runtimeCallInitializeIsolate(INITIALIZE_ISOLATE, parameters);
     }
 
+    /**
+     * After parsing the isolate arguments in
+     * {@link IsolateArgumentParser#parse(CEntryPointCreateIsolateParameters, IsolateArguments)} the
+     * {@code providedParameters} should no longer be used. Instead {@link IsolateArguments}
+     * contains the correct values.
+     */
     @Uninterruptible(reason = "Thread state not yet set up.")
     @SubstrateForeignCallTarget(stubCallingConvention = false)
     private static int createIsolate(CEntryPointCreateIsolateParameters providedParameters) {
@@ -226,27 +236,35 @@ public final class CEntryPointSnippets extends SubstrateTemplates implements Sni
             parameters.setReservedSpaceSize(WordFactory.zero());
             parameters.setVersion(1);
         }
-        CLongPointer parsedArgs = StackValue.get(IsolateArgumentParser.getStructSize());
-        IsolateArgumentParser.parse(parameters, parsedArgs);
-        if (parameters.reservedSpaceSize().equal(0)) {
-            parameters.setReservedSpaceSize(WordFactory.unsigned(parsedArgs.read(IsolateArgumentParser.getOptionIndex(SubstrateGCOptions.ReservedAddressSpaceSize))));
-        }
+
+        IsolateArguments arguments = StackValue.get(IsolateArguments.class);
+        UnmanagedMemoryUtil.fill((Pointer) arguments, SizeOf.unsigned(IsolateArguments.class), (byte) 0);
+        CLongPointer parsedArgs = StackValue.get(IsolateArgumentParser.singleton().getParsedArgsSize());
+        arguments.setParsedArgs(parsedArgs);
+
+        // Temporarily needed.
+        arguments.setParameters(parameters);
+
+        IsolateArgumentParser.singleton().parse(parameters, arguments);
+
+        Container.initialize();
 
         WordPointer isolatePtr = StackValue.get(WordPointer.class);
-        int error = Isolates.create(isolatePtr, parameters);
+        int error = Isolates.create(isolatePtr, arguments);
         if (error != CEntryPointErrors.NO_ERROR) {
+            IsolateArgumentParser.singleton().tearDown(arguments);
             return error;
         }
         Isolate isolate = isolatePtr.read();
         setHeapBase(Isolates.getHeapBase(isolate));
 
-        return createIsolate0(isolate, parameters, parsedArgs);
+        return createIsolate0(isolate, arguments);
     }
 
     @Uninterruptible(reason = "Thread state not yet set up.")
     @NeverInline(value = "Ensure this code cannot rise above where heap base is set.")
-    private static int createIsolate0(Isolate isolate, CEntryPointCreateIsolateParameters parameters, CLongPointer parsedArgs) {
-        IsolateArgumentParser.persistOptions(parameters, parsedArgs);
+    private static int createIsolate0(Isolate isolate, IsolateArguments arguments) {
+        IsolateArgumentParser.singleton().persistOptions(arguments);
         IsolateListenerSupport.singleton().afterCreateIsolate(isolate);
 
         CodeInfoTable.prepareImageCodeInfo();
@@ -310,6 +328,12 @@ public final class CEntryPointSnippets extends SubstrateTemplates implements Sni
     @NeverInline("GR-24649")
     private static int initializeIsolateInterruptibly1(CEntryPointCreateIsolateParameters parameters) {
         /*
+         * Initialize the physical memory size. This must be done as early as possible because we
+         * must not trigger GC before PhysicalMemory is initialized.
+         */
+        PhysicalMemory.initialize();
+
+        /*
          * The VM operation thread must be started early as no VM operations can be scheduled before
          * this thread is fully started. The isolate teardown may also use VM operations.
          */
@@ -350,6 +374,8 @@ public final class CEntryPointSnippets extends SubstrateTemplates implements Sni
          * that allocates a significant amount of memory.
          */
 
+        IsolateArgumentParser.singleton().copyToRuntimeOptions();
+
         if (parameters.isNonNull() && parameters.version() >= 3 && parameters.getArgv().isNonNull()) {
             boolean exitWhenArgumentParsingFails = true;
             boolean ignoreUnrecognized = false;
@@ -387,9 +413,6 @@ public final class CEntryPointSnippets extends SubstrateTemplates implements Sni
 
         /* Adjust stack overflow boundary of main thread. */
         StackOverflowCheck.singleton().updateStackOverflowBoundary();
-
-        /* Initialize the physical memory size. */
-        PhysicalMemory.size();
 
         assert !isolateInitialized;
         isolateInitialized = true;
@@ -598,6 +621,7 @@ public final class CEntryPointSnippets extends SubstrateTemplates implements Sni
             CodeInfoTable.tearDown();
             NonmovableArrays.tearDown();
             Heap.getHeap().tearDown();
+            IsolateArgumentParser.singleton().tearDown();
 
             /* Tear down the heap address space, including the image heap. */
             int code = CommittedMemoryProvider.get().tearDown();

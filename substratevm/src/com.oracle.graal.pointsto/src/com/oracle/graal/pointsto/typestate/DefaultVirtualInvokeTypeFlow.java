@@ -58,6 +58,9 @@ final class DefaultVirtualInvokeTypeFlow extends AbstractVirtualInvokeTypeFlow {
 
     @Override
     public void onObservedUpdate(PointsToAnalysis bb) {
+        if (!isFlowEnabled()) {
+            return;
+        }
         if (isSaturated()) {
             /* The receiver can saturate while the invoke update was waiting to be scheduled. */
             return;
@@ -72,6 +75,7 @@ final class DefaultVirtualInvokeTypeFlow extends AbstractVirtualInvokeTypeFlow {
         }
 
         for (AnalysisType type : receiverState.types(bb)) {
+            assert receiverType.isAssignableFrom(type) : type + " should be a subtype of " + receiverType;
             if (isSaturated()) {
                 /*-
                  * The receiver can become saturated during the callees linking, which saturates
@@ -137,11 +141,13 @@ final class DefaultVirtualInvokeTypeFlow extends AbstractVirtualInvokeTypeFlow {
 
     @Override
     public void onObservedSaturated(PointsToAnalysis bb, TypeFlow<?> observed) {
+        if (!setSaturated()) {
+            return;
+        }
+
         /* Eagerly ensure context insensitive invoke is created before the saturated flag is set. */
         AbstractVirtualInvokeTypeFlow contextInsensitiveInvoke = (AbstractVirtualInvokeTypeFlow) targetMethod.initAndGetContextInsensitiveInvoke(bb, source, false, callerMultiMethodKey);
         contextInsensitiveInvoke.addInvokeLocation(getSource());
-
-        setSaturated();
 
         /*
          * The receiver object flow of the invoke operation is saturated; it will stop sending
@@ -177,7 +183,6 @@ final class DefaultVirtualInvokeTypeFlow extends AbstractVirtualInvokeTypeFlow {
          * receiver is already set in the saturated invoke.
          */
         for (int i = 1; i < actualParameters.length; i++) {
-            /* Primitive type parameters are not modeled, hence null. */
             if (actualParameters[i] != null) {
                 actualParameters[i].addUse(bb, contextInsensitiveInvoke.getActualParameter(i));
             }
@@ -189,15 +194,16 @@ final class DefaultVirtualInvokeTypeFlow extends AbstractVirtualInvokeTypeFlow {
     }
 
     @Override
-    public void setSaturated() {
-        super.setSaturated();
+    public boolean setSaturated() {
+        var success = super.setSaturated();
         if (this.isClone()) {
             /*
              * If this is a clone, mark the original as saturated too such that
              * originalInvoke.getCallees() is redirected to the context-insensitive invoke.
              */
-            originalInvoke.setSaturated();
+            success |= originalInvoke.setSaturated();
         }
+        return success;
     }
 
     @Override

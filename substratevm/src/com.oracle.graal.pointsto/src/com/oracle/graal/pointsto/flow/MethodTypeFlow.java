@@ -125,7 +125,7 @@ public class MethodTypeFlow extends TypeFlow<AnalysisMethod> {
     public MethodFlowsGraph getMethodFlowsGraph() {
         ensureFlowsGraphSealed();
 
-        assert flowsGraph != null;
+        assert flowsGraph != null : "Flows graph not available yet.";
         return flowsGraph;
     }
 
@@ -171,7 +171,7 @@ public class MethodTypeFlow extends TypeFlow<AnalysisMethod> {
                 }
                 bb.numParsedGraphs.incrementAndGet();
 
-                boolean computeIndex = !method.getReturnsAllInstantiatedTypes() && bb.getHostVM().getMultiMethodAnalysisPolicy().canComputeReturnedParameterIndex(method.getMultiMethodKey());
+                boolean computeIndex = !method.hasOpaqueReturn() && bb.getHostVM().getMultiMethodAnalysisPolicy().canComputeReturnedParameterIndex(method.getMultiMethodKey());
                 returnedParameterIndex = computeIndex ? computeReturnedParameterIndex(builder.graph) : -1;
 
                 /* Set the flows graph after fully built. */

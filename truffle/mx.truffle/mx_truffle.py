@@ -227,6 +227,9 @@ class TruffleUnittestConfig(mx_unittest.MxUnittestConfig):
 
         # Disable VirtualThread warning
         vmArgs = vmArgs + ['-Dpolyglot.engine.WarnVirtualThreadSupport=false']
+        if mx.get_jdk().javaCompliance > '23':
+            # Ignore illegal native access until is GR-57817 fixed.
+            vmArgs = vmArgs + ['--illegal-native-access=allow']
 
         return (vmArgs, mainClass, mainClassArgs)
 
@@ -365,7 +368,15 @@ def _sl_command(jdk, vm_args, sl_args, use_optimized_runtime=True, use_enterpris
         main_class = ["com.oracle.truffle.sl.launcher.SLMain"]
     else:
         main_class = ["--module", "org.graalvm.sl_launcher/com.oracle.truffle.sl.launcher.SLMain"]
-    return [jdk.java] + vm_args + mx.get_runtime_jvm_args(names=dist_names, force_cp=force_cp) + main_class + sl_args
+
+    if use_optimized_runtime and jdk.javaCompliance > '21':
+        if force_cp:
+            vm_args += ["--enable-native-access=ALL-UNNAMED"]
+        else:
+            # revisit once GR-57817 is fixed
+            vm_args += ["--enable-native-access=org.graalvm.truffle.runtime"]
+
+    return [jdk.java] + jdk.processArgs(vm_args + mx.get_runtime_jvm_args(names=dist_names, force_cp=force_cp) + main_class + sl_args)
 
 
 def slnative(args):
@@ -688,7 +699,7 @@ def _sl_jvm_gate_tests(jdk, force_cp=False, supports_optimization=True):
 
 
 def _sl_jvm_comiler_on_upgrade_module_path_gate_tests(jdk):
-    if _is_graalvm(jdk):
+    if mx_sdk.GraalVMJDKConfig.is_graalvm(jdk.home) or mx_sdk.GraalVMJDKConfig.is_libgraal_jdk(jdk.home):
         # Ignore tests for Truffle LTS gate using GraalVM as a base JDK
         mx.log(f'Ignoring SL JVM Optimized with Compiler on Upgrade Module Path on {jdk.home} because JDK is GraalVM')
         return
@@ -888,16 +899,6 @@ mx.update_commands(_suite, {
     'sl' : [sl, '[SL args|@VM options]'],
     'slnative': [slnative, '[--target-folder <folder>|SL args|@VM options]'],
 })
-
-def _is_graalvm(jdk):
-    releaseFile = os.path.join(jdk.home, "release")
-    if exists(releaseFile):
-        with open(releaseFile) as f:
-            pattern = re.compile('^GRAALVM_VERSION=*')
-            for line in f.readlines():
-                if pattern.match(line):
-                    return True
-    return False
 
 def _collect_distributions(dist_filter, dist_collector):
     def import_visitor(suite, suite_import, predicate, collector, seenSuites, **extra_args):
@@ -1124,7 +1125,7 @@ def tck(args):
             jdk = mx.get_jdk(tag='graalvm')
         else:
             jdk = mx.get_jdk()
-        if not _is_graalvm(jdk):
+        if not mx_sdk.GraalVMJDKConfig.is_graalvm(jdk.home):
             mx.abort("The 'compile' TCK configuration requires graalvm execution, "
                      "run with --java-home=<path_to_graalvm> or run with --use-graalvm.")
         compileOptions = [

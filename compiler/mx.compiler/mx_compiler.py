@@ -605,7 +605,7 @@ def compiler_gate_benchmark_runner(tasks, extraVMarguments=None, prefix='', task
     # ensure we can run with --enable-preview
     with Task(prefix + 'DaCapo_enable-preview:fop', tasks, tags=GraalTags.test, report=task_report_component) as t:
         if t:
-            _gate_dacapo('fop', 8, ['--enable-preview', '-Djdk.graal.CompilationFailureAction=ExitVM'])
+            _gate_dacapo('fop', 8, benchVmArgs + ['--enable-preview', '-Djdk.graal.CompilationFailureAction=ExitVM'])
 
     # run Scala DaCapo benchmarks #
     ###############################
@@ -820,6 +820,11 @@ class GraalUnittestConfig(mx_unittest.MxUnittestConfig):
                 if limited_modules is None or jmd.name in limited_modules:
                     mainClassArgs.extend(['-JUnitOpenPackages', jmd.name + '/*'])
                     vmArgs.append('--add-modules=' + jmd.name)
+                    for dependency, packages in jmd.concealedRequires.items():
+                        if dependency != "jdk.internal.vm.ci":
+                            # JVMCI exporting is done dynamically
+                            for p in packages:
+                                vmArgs.append(f'--add-exports={dependency}/{p}={jmd.name}')
 
         vmArgs.append('-Djdk.graal.TrackNodeSourcePosition=true')
         vmArgs.append('-esa')
@@ -1119,14 +1124,8 @@ def collate_metrics(args):
 
 def run_java(args, out=None, err=None, addDefaultArgs=True, command_mapper_hooks=None, jdk=None, **kw_args):
     graaljdk = jdk or get_graaljdk()
-    all_modules = [jmd.name for jmd in graaljdk.get_modules()]
     vm_args = _parseVmArgs(args, addDefaultArgs=addDefaultArgs)
-    args = ['-XX:+UnlockExperimentalVMOptions', '-XX:+EnableJVMCI']
-    if 'com.oracle.graal.graal_enterprise' in all_modules:
-        args += ['--add-exports=java.base/jdk.internal.misc=jdk.graal.compiler,com.oracle.graal.graal_enterprise']
-    else:
-        args += ['--add-exports=java.base/jdk.internal.misc=jdk.graal.compiler']
-    args += vm_args
+    args = ['-XX:+UnlockExperimentalVMOptions', '-XX:+EnableJVMCI', '--add-exports=java.base/jdk.internal.misc=jdk.graal.compiler'] + vm_args
     _check_bootstrap_config(args)
     cmd = get_vm_prefix() + [graaljdk.java] + ['-server'] + args
     map_file = join(graaljdk.home, 'proguard.map')

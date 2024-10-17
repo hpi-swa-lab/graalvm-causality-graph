@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2020, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -42,6 +42,7 @@ import com.oracle.svm.core.annotate.RecomputeFieldValue;
 import com.oracle.svm.core.annotate.RecomputeFieldValue.Kind;
 import com.oracle.svm.core.annotate.Substitute;
 import com.oracle.svm.core.annotate.TargetClass;
+import com.oracle.svm.core.annotate.TargetElement;
 import com.oracle.svm.core.hub.ClassForNameSupport;
 import com.oracle.svm.core.hub.PredefinedClassesSupport;
 import com.oracle.svm.core.util.VMError;
@@ -165,7 +166,7 @@ public final class Target_java_lang_ClassLoader {
     @Substitute //
     @SuppressWarnings({"unused"}) //
     private Class<?> findLoadedClass0(String name) {
-        return ClassForNameSupport.singleton().forNameOrNull(name, SubstrateUtil.cast(this, ClassLoader.class));
+        return ClassForNameSupport.forNameOrNull(name, SubstrateUtil.cast(this, ClassLoader.class));
     }
 
     /**
@@ -242,9 +243,10 @@ public final class Target_java_lang_ClassLoader {
     private static native void registerNatives();
 
     /**
-     * Ignores {@code loader}, as {@link Target_java_lang_ClassLoader#loadLibrary}.
+     * Ignores {@code loader}, like {@link Target_java_lang_ClassLoader#loadLibrary} does.
      */
     @Substitute
+    @TargetElement(onlyWith = JDK21OrEarlier.class)
     private static long findNative(@SuppressWarnings("unused") ClassLoader loader, String entryName) {
         return NativeLibrarySupport.singleton().findSymbol(entryName).rawValue();
     }

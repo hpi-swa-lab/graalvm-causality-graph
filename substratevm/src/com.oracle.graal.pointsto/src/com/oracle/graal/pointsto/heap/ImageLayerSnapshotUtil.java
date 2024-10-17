@@ -58,6 +58,7 @@ import jdk.vm.ci.meta.JavaKind;
 
 public class ImageLayerSnapshotUtil {
     public static final String FILE_NAME_PREFIX = "layer-snapshot-";
+    public static final String GRAPHS_FILE_NAME_PREFIX = "layer-snapshot-graphs-";
     public static final String FILE_EXTENSION = ".json";
 
     public static final String CONSTRUCTOR_NAME = "<init>";
@@ -78,8 +79,18 @@ public class ImageLayerSnapshotUtil {
     public static final String CAN_BE_STATICALLY_BOUND_TAG = "can be statically bound";
     public static final String IS_CONSTRUCTOR_TAG = "is constructor";
     public static final String IS_SYNTHETIC_TAG = "is synthetic";
+    public static final String CODE_TAG = "code";
     public static final String CODE_SIZE_TAG = "code size";
+    public static final String METHOD_HANDLE_INTRINSIC_TAG = "method handle intrinsic";
+    public static final String IS_VIRTUAL_ROOT_METHOD = "is virtual root method";
+    public static final String IS_DIRECT_ROOT_METHOD = "is direct root method";
+    public static final String IS_INVOKED = "is invoked";
+    public static final String IS_IMPLEMENTATION_INVOKED = "is implementation invoked";
+    public static final String IS_INTRINSIC_METHOD = "is intrinsic method";
     public static final String ANNOTATIONS_TAG = "annotations";
+    public static final String IS_INSTANTIATED = "is instantiated";
+    public static final String IS_UNSAFE_ALLOCATED = "is unsafe allocated";
+    public static final String IS_REACHABLE = "is reachable";
     public static final String CLASS_NAME_TAG = "class name";
     public static final String MODIFIERS_TAG = "modifiers";
     public static final String POSITION_TAG = "position";
@@ -92,6 +103,10 @@ public class ImageLayerSnapshotUtil {
     public static final String COMPONENT_TYPE_TAG = "component type";
     public static final String SUPER_CLASS_TAG = "super class";
     public static final String INTERFACES_TAG = "interfaces";
+    public static final String WRAPPED_TYPE_TAG = "wrapped type";
+    public static final String GENERATED_SERIALIZATION_TAG = "generated serialization";
+    public static final String RAW_DECLARING_CLASS_TAG = "raw declaring class";
+    public static final String RAW_TARGET_CONSTRUCTOR_CLASS_TAG = "raw target constructor class";
     public static final String CONSTANTS_TAG = "constants";
     public static final String CONSTANTS_TO_RELINK_TAG = "constants to relink";
     public static final String TID_TAG = "tid";
@@ -100,7 +115,7 @@ public class ImageLayerSnapshotUtil {
     public static final String ARGUMENT_IDS_TAG = "argument ids";
     public static final String RETURN_TYPE_TAG = "return type";
     public static final String IS_VAR_ARGS_TAG = "is varArg";
-    public static final String METHOD_TYPE_TAG = "method type";
+    public static final String WRAPPED_METHOD_TAG = "wrapped method";
     public static final String METHOD_TYPE_PARAMETERS_TAG = "method type parameters";
     public static final String METHOD_TYPE_RETURN_TAG = "method type return";
     public static final String FACTORY_TAG = "factory";
@@ -109,6 +124,17 @@ public class ImageLayerSnapshotUtil {
     public static final String THROW_ALLOCATED_OBJECT_TAG = "throw allocated object";
     public static final String IDENTITY_HASH_CODE_TAG = "identityHashCode";
     public static final String HUB_IDENTITY_HASH_CODE_TAG = "hub identityHashCode";
+    public static final String IS_INITIALIZED_AT_BUILD_TIME_TAG = "is initialized at build time";
+    public static final String IS_NO_INITIALIZER_NO_TRACKING_TAG = "in no initializer no tracking";
+    public static final String IS_INITIALIZED_NO_TRACKING_TAG = "is initialized no tracking";
+    public static final String IS_FAILED_NO_TRACKING_TAG = "is failed no tracking";
+    public static final String INFO_IS_INITIALIZED_TAG = "info is initialized";
+    public static final String INFO_IS_IN_ERROR_STATE_TAG = "info is in error state";
+    public static final String INFO_IS_LINKED_TAG = "info is linked";
+    public static final String INFO_HAS_INITIALIZER_TAG = "info has initializer";
+    public static final String INFO_IS_BUILD_TIME_INITIALIZED_TAG = "info is build time initialized";
+    public static final String INFO_IS_TRACKED_TAG = "info is tracked";
+    public static final String INFO_CLASS_INITIALIZER_TAG = "info class initializer";
     public static final String ID_TAG = "id";
     public static final String ANALYSIS_PARSED_GRAPH_TAG = "analysis parsed graph";
     public static final String STRENGTHENED_GRAPH_TAG = "strengthened graph";
@@ -171,6 +197,10 @@ public class ImageLayerSnapshotUtil {
         return FILE_NAME_PREFIX + imageName + FILE_EXTENSION;
     }
 
+    public static String snapshotGraphsFileName(String imageName) {
+        return GRAPHS_FILE_NAME_PREFIX + imageName + FILE_EXTENSION;
+    }
+
     public String getTypeIdentifier(AnalysisType type) {
         String javaName = type.toJavaName(true);
         return addModuleName(javaName, type.getJavaClass().getModule().getName());
@@ -204,8 +234,8 @@ public class ImageLayerSnapshotUtil {
     }
 
     @SuppressWarnings("unused")
-    public GraphDecoder getGraphDecoder(ImageLayerLoader imageLayerLoader, SnippetReflectionProvider snippetReflectionProvider) {
-        return new GraphDecoder(EncodedGraph.class.getClassLoader(), imageLayerLoader);
+    public GraphDecoder getGraphDecoder(ImageLayerLoader imageLayerLoader, AnalysisMethod analysisMethod, SnippetReflectionProvider snippetReflectionProvider) {
+        return new GraphDecoder(EncodedGraph.class.getClassLoader(), imageLayerLoader, analysisMethod);
     }
 
     public static class GraphEncoder extends ObjectCopier.Encoder {
@@ -215,7 +245,7 @@ public class ImageLayerSnapshotUtil {
             addBuiltin(new NodeClassBuiltIn());
             addBuiltin(new ImageHeapConstantBuiltIn(imageLayerWriter, null));
             addBuiltin(new AnalysisTypeBuiltIn(imageLayerWriter, null));
-            addBuiltin(new AnalysisMethodBuiltIn(imageLayerWriter, null));
+            addBuiltin(new AnalysisMethodBuiltIn(imageLayerWriter, null, null));
             addBuiltin(new AnalysisFieldBuiltIn(imageLayerWriter, null));
             addBuiltin(new FieldLocationIdentityBuiltIn(imageLayerWriter, null));
             addBuiltin(new NamedLocationIdentityArrayBuiltIn());
@@ -223,16 +253,24 @@ public class ImageLayerSnapshotUtil {
     }
 
     public static class GraphDecoder extends ObjectCopier.Decoder {
+        private final ImageLayerLoader imageLayerLoader;
+
         @SuppressWarnings("this-escape")
-        public GraphDecoder(ClassLoader classLoader, ImageLayerLoader imageLayerLoader) {
+        public GraphDecoder(ClassLoader classLoader, ImageLayerLoader imageLayerLoader, AnalysisMethod analysisMethod) {
             super(classLoader);
+            this.imageLayerLoader = imageLayerLoader;
             addBuiltin(new NodeClassBuiltIn());
             addBuiltin(new ImageHeapConstantBuiltIn(null, imageLayerLoader));
             addBuiltin(new AnalysisTypeBuiltIn(null, imageLayerLoader));
-            addBuiltin(new AnalysisMethodBuiltIn(null, imageLayerLoader));
+            addBuiltin(new AnalysisMethodBuiltIn(null, imageLayerLoader, analysisMethod));
             addBuiltin(new AnalysisFieldBuiltIn(null, imageLayerLoader));
             addBuiltin(new FieldLocationIdentityBuiltIn(null, imageLayerLoader));
             addBuiltin(new NamedLocationIdentityArrayBuiltIn());
+        }
+
+        @Override
+        public Class<?> loadClass(String className) {
+            return imageLayerLoader.lookupClass(false, className);
         }
     }
 
@@ -289,9 +327,7 @@ public class ImageLayerSnapshotUtil {
         @Override
         public String encode(ObjectCopier.Encoder encoder, Object obj) {
             AnalysisType type = (AnalysisType) obj;
-            if (!type.isReachable() && !imageLayerWriter.typesMap.containsKey(imageLayerWriter.imageLayerSnapshotUtil.getTypeIdentifier(type))) {
-                imageLayerWriter.persistType(type);
-            }
+            imageLayerWriter.persistType(type);
             return String.valueOf(type.getId());
         }
 
@@ -304,11 +340,13 @@ public class ImageLayerSnapshotUtil {
     public static class AnalysisMethodBuiltIn extends ObjectCopier.Builtin {
         private final ImageLayerWriter imageLayerWriter;
         private final ImageLayerLoader imageLayerLoader;
+        private final AnalysisMethod analysisMethod;
 
-        protected AnalysisMethodBuiltIn(ImageLayerWriter imageLayerWriter, ImageLayerLoader imageLayerLoader) {
+        protected AnalysisMethodBuiltIn(ImageLayerWriter imageLayerWriter, ImageLayerLoader imageLayerLoader, AnalysisMethod analysisMethod) {
             super(AnalysisMethod.class, PointsToAnalysisMethod.class);
             this.imageLayerWriter = imageLayerWriter;
             this.imageLayerLoader = imageLayerLoader;
+            this.analysisMethod = analysisMethod;
         }
 
         @Override
@@ -316,25 +354,23 @@ public class ImageLayerSnapshotUtil {
             AnalysisMethod method = (AnalysisMethod) obj;
             AnalysisType declaringClass = method.getDeclaringClass();
             imageLayerWriter.elementsToPersist.add(new AnalysisFuture<>(() -> {
-                if (!method.isReachable() && !imageLayerWriter.methodsMap.containsKey(imageLayerWriter.imageLayerSnapshotUtil.getMethodIdentifier(method))) {
-                    imageLayerWriter.persistAnalysisParsedGraph(method);
-                    imageLayerWriter.persistMethod(method);
-                }
+                imageLayerWriter.persistAnalysisParsedGraph(method);
+                imageLayerWriter.persistMethod(method);
             }));
             for (AnalysisType parameter : method.toParameterList()) {
-                if (!parameter.isReachable() && !imageLayerWriter.typesMap.containsKey(imageLayerWriter.imageLayerSnapshotUtil.getTypeIdentifier(parameter))) {
-                    imageLayerWriter.persistType(parameter);
-                }
+                imageLayerWriter.persistType(parameter);
             }
-            if (!declaringClass.isReachable() && !imageLayerWriter.typesMap.containsKey(imageLayerWriter.imageLayerSnapshotUtil.getTypeIdentifier(declaringClass))) {
-                imageLayerWriter.persistType(declaringClass);
-            }
+            imageLayerWriter.persistType(declaringClass);
             return String.valueOf(method.getId());
         }
 
         @Override
         protected Object decode(ObjectCopier.Decoder decoder, Class<?> concreteType, String encoding, String encoded) {
-            return imageLayerLoader.getAnalysisMethod(Integer.parseInt(encoded));
+            int id = Integer.parseInt(encoded);
+            if (id == analysisMethod.getId()) {
+                return analysisMethod;
+            }
+            return imageLayerLoader.getAnalysisMethod(id);
         }
     }
 

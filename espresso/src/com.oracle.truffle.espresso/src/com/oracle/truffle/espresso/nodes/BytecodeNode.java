@@ -286,6 +286,7 @@ import com.oracle.truffle.api.CompilerDirectives.TruffleBoundary;
 import com.oracle.truffle.api.HostCompilerDirectives.BytecodeInterpreterSwitch;
 import com.oracle.truffle.api.Truffle;
 import com.oracle.truffle.api.TruffleSafepoint;
+import com.oracle.truffle.api.TruffleStackTrace;
 import com.oracle.truffle.api.exception.AbstractTruffleException;
 import com.oracle.truffle.api.frame.Frame;
 import com.oracle.truffle.api.frame.FrameDescriptor;
@@ -314,7 +315,6 @@ import com.oracle.truffle.espresso.classfile.RuntimeConstantPool;
 import com.oracle.truffle.espresso.classfile.attributes.BootstrapMethodsAttribute;
 import com.oracle.truffle.espresso.classfile.attributes.LineNumberTableAttribute;
 import com.oracle.truffle.espresso.classfile.constantpool.ClassConstant;
-import com.oracle.truffle.espresso.classfile.constantpool.ClassMethodRefConstant;
 import com.oracle.truffle.espresso.classfile.constantpool.DoubleConstant;
 import com.oracle.truffle.espresso.classfile.constantpool.DynamicConstant;
 import com.oracle.truffle.espresso.classfile.constantpool.FloatConstant;
@@ -375,6 +375,10 @@ import com.oracle.truffle.espresso.nodes.quick.invoke.InvokeStaticQuickNode;
 import com.oracle.truffle.espresso.nodes.quick.invoke.InvokeVirtualQuickNode;
 import com.oracle.truffle.espresso.nodes.quick.invoke.inline.InlinedMethodNode;
 import com.oracle.truffle.espresso.perf.DebugCounter;
+import com.oracle.truffle.espresso.resolver.CallKind;
+import com.oracle.truffle.espresso.resolver.CallSiteType;
+import com.oracle.truffle.espresso.resolver.LinkResolver;
+import com.oracle.truffle.espresso.resolver.ResolvedCall;
 import com.oracle.truffle.espresso.runtime.EspressoContext;
 import com.oracle.truffle.espresso.runtime.EspressoException;
 import com.oracle.truffle.espresso.runtime.EspressoExitException;
@@ -497,18 +501,7 @@ public final class BytecodeNode extends AbstractInstrumentableBytecodeNode imple
     }
 
     public SourceSection getSourceSectionAtBCI(int bci) {
-        Source s = getSource();
-        if (s == null) {
-            return null;
-        }
-
-        LineNumberTableAttribute table = getMethodVersion().getLineNumberTableAttribute();
-
-        if (table == LineNumberTableAttribute.EMPTY) {
-            return null;
-        }
-        int line = table.getLineNumber(bci);
-        return s.createSection(line);
+        return getMethodVersion().getSourceSectionAtBCI(bci);
     }
 
     @ExplodeLoop
@@ -1635,6 +1628,10 @@ public final class BytecodeNode extends AbstractInstrumentableBytecodeNode imple
                         }
                     }
                     if (handler != null) {
+                        // If there is a lazy stack trace being collected
+                        // we need to materialize here since the handler is likely
+                        // on a different line than the exception point
+                        TruffleStackTrace.fillIn(wrappedException);
                         clearOperandStack(frame, top);
                         top = startingStackOffset(getMethodVersion().getMaxLocals());
                         checkNoForeignObjectAssumption(wrappedException.getGuestException());
@@ -2400,141 +2397,38 @@ public final class BytecodeNode extends AbstractInstrumentableBytecodeNode imple
     // endregion quickenForeign
 
     private InvokeQuickNode dispatchQuickened(int top, int curBCI, char cpi, int opcode, int statementIndex, Method resolutionSeed, boolean allowBytecodeInlining) {
-        Method resolved = resolutionSeed;
-        int resolvedOpCode = opcode;
-        switch (opcode) {
-            case INVOKESTATIC:
-                // Otherwise, if the resolved method is an instance method, the invokestatic
-                // instruction throws an IncompatibleClassChangeError.
-                if (!resolved.isStatic()) {
-                    enterLinkageExceptionProfile();
-                    throw throwBoundary(getMethod().getMeta().java_lang_IncompatibleClassChangeError, "Expected static method '%s.%s%s'",
-                                    resolved.getDeclaringKlass().getName(),
-                                    resolved.getName(),
-                                    resolved.getRawSignature());
-                }
-                break;
-            case INVOKEINTERFACE:
-                // Otherwise, if the resolved method is static or (jdk8 or earlier) private, the
-                // invokeinterface instruction throws an IncompatibleClassChangeError.
-                if (resolved.isStatic() ||
-                                (getMethod().getContext().getJavaVersion().java8OrEarlier() && resolved.isPrivate())) {
-                    enterLinkageExceptionProfile();
-                    throw throwBoundary(getMethod().getMeta().java_lang_IncompatibleClassChangeError, "Expected instance method '%s.%s%s'",
-                                    resolved.getDeclaringKlass().getName(),
-                                    resolved.getName(),
-                                    resolved.getRawSignature());
-                }
-                if (resolved.getITableIndex() < 0) {
-                    if (resolved.isPrivate()) {
-                        assert getJavaVersion().java9OrLater();
-                        // Interface private methods do not appear in itables.
-                        resolvedOpCode = INVOKESPECIAL;
-                    } else {
-                        // Can happen in old classfiles that calls j.l.Object on interfaces.
-                        resolvedOpCode = INVOKEVIRTUAL;
-                    }
-                }
-                break;
-            case INVOKEVIRTUAL:
-                // Otherwise, if the resolved method is a class (static) method, the invokevirtual
-                // instruction throws an IncompatibleClassChangeError.
-                if (resolved.isStatic()) {
-                    enterLinkageExceptionProfile();
-                    throw throwBoundary(getMethod().getMeta().java_lang_IncompatibleClassChangeError, "Expected instance not static method '%s.%s%s'",
-                                    resolved.getDeclaringKlass().getName(),
-                                    resolved.getName(),
-                                    resolved.getRawSignature());
-                }
-                if (resolved.isFinalFlagSet() || resolved.getDeclaringKlass().isFinalFlagSet() || resolved.isPrivate()) {
-                    resolvedOpCode = INVOKESPECIAL;
-                }
-                break;
-            case INVOKESPECIAL:
-                // Otherwise, if the resolved method is an instance initialization method, and the
-                // class in which it is declared is not the class symbolically referenced by the
-                // instruction, a NoSuchMethodError is thrown.
-                if (resolved.isConstructor()) {
-                    if (resolved.getDeclaringKlass().getName() != getConstantPool().methodAt(cpi).getHolderKlassName(getConstantPool())) {
-                        enterLinkageExceptionProfile();
-                        throw throwBoundary(getMethod().getMeta().java_lang_NoSuchMethodError,
-                                        "%s.%s%s",
-                                        resolved.getDeclaringKlass().getName(),
-                                        resolved.getName(),
-                                        resolved.getRawSignature());
-                    }
-                }
-                // Otherwise, if the resolved method is a class (static) method, the invokespecial
-                // instruction throws an IncompatibleClassChangeError.
-                if (resolved.isStatic()) {
-                    enterLinkageExceptionProfile();
-                    throw throwBoundary(getMethod().getMeta().java_lang_IncompatibleClassChangeError, "Expected instance not static method '%s.%s%s'",
-                                    resolved.getDeclaringKlass().getName(),
-                                    resolved.getName(),
-                                    resolved.getRawSignature());
-                }
-                // If all of the following are true, let C be the direct superclass of the current
-                // class:
-                //
-                // * The resolved method is not an instance initialization method (&sect;2.9).
-                //
-                // * If the symbolic reference names a class (not an interface), then that class is
-                // a superclass of the current class.
-                //
-                // * The ACC_SUPER flag is set for the class file (&sect;4.1). In Java SE 8 and
-                // above, the Java Virtual Machine considers the ACC_SUPER flag to be set in every
-                // class file, regardless of the actual value of the flag in the class file and the
-                // version of the class file.
-                if (!resolved.isConstructor()) {
-                    ObjectKlass declaringKlass = getMethod().getDeclaringKlass();
-                    Klass symbolicRef = ((MethodRefConstant.Indexes) getConstantPool().methodAt(cpi)).getResolvedHolderKlass(declaringKlass, getConstantPool());
-                    if (!symbolicRef.isInterface() &&
-                                    symbolicRef != declaringKlass &&
-                                    declaringKlass.getSuperKlass() != null &&
-                                    symbolicRef != declaringKlass.getSuperKlass() &&
-                                    symbolicRef.isAssignableFrom(declaringKlass)) {
-                        resolved = declaringKlass.getSuperKlass().lookupMethod(resolved.getName(), resolved.getRawSignature(), Klass.LookupMode.INSTANCE_ONLY);
-                    }
-                }
-                break;
-            default:
-                CompilerDirectives.transferToInterpreterAndInvalidate();
-                throw EspressoError.unimplemented("Quickening for " + Bytecodes.nameOf(opcode));
-        }
+
+        Klass symbolicRef = ((MethodRefConstant.Indexes) getConstantPool().methodAt(cpi)).getResolvedHolderKlass(getDeclaringKlass(), getConstantPool());
+        ResolvedCall resolvedCall = LinkResolver.resolveCallSite(getMeta(), getDeclaringKlass(), resolutionSeed, CallSiteType.fromOpCode(opcode), symbolicRef);
+
+        Method resolved = resolvedCall.getResolvedMethod();
+        CallKind callKind = resolvedCall.getCallKind();
 
         // Skip inlined nodes if instrumentation is live.
         // Lock must be owned for correctness.
         assert lockIsHeld();
         boolean tryBytecodeLevelInlining = this.instrumentation == null && allowBytecodeInlining;
         if (tryBytecodeLevelInlining) {
-            var node = InlinedMethodNode.createFor(resolved, top, resolvedOpCode, curBCI, statementIndex);
+            InlinedMethodNode node = InlinedMethodNode.createFor(resolvedCall, top, opcode, curBCI, statementIndex);
             if (node != null) {
                 return node;
             }
         }
 
-        InvokeQuickNode invoke;
         if (resolved.isPolySignatureIntrinsic()) {
-            MethodHandleInvoker invoker = null;
-            if ((resolvedOpCode == INVOKEVIRTUAL || resolvedOpCode == INVOKESPECIAL) && (getConstantPool().resolvedMethodRefAt(getDeclaringKlass(), cpi) instanceof ClassMethodRefConstant methodRef)) {
-                // There might be an invoker if it's an InvokeGeneric
-                invoker = methodRef.invoker();
-            }
-            invoke = new InvokeHandleNode(resolved, invoker, top, curBCI);
+            MethodHandleInvoker invoker = getConstantPool().resolvedMethodRefAt(getDeclaringKlass(), cpi).invoker();
+            assert invoker == null || ((opcode == INVOKEVIRTUAL || opcode == INVOKESPECIAL) && resolved.isInvokeIntrinsic());
+            return new InvokeHandleNode(resolved, invoker, top, curBCI);
         } else {
             // @formatter:off
-            switch (resolvedOpCode) {
-                case INVOKESTATIC    : invoke = new InvokeStaticQuickNode(resolved, top, curBCI);         break;
-                case INVOKEINTERFACE : invoke = new InvokeInterfaceQuickNode(resolved, top, curBCI); break;
-                case INVOKEVIRTUAL   : invoke = new InvokeVirtualQuickNode(resolved, top, curBCI);   break;
-                case INVOKESPECIAL   : invoke = new InvokeSpecialQuickNode(resolved, top, curBCI);        break;
-                default              :
-                    CompilerDirectives.transferToInterpreterAndInvalidate();
-                    throw EspressoError.unimplemented("Quickening for " + Bytecodes.nameOf(resolvedOpCode));
-            }
+            return switch (callKind) {
+                case STATIC          -> new InvokeStaticQuickNode(resolved, top, curBCI);
+                case ITABLE_LOOKUP   -> new InvokeInterfaceQuickNode(resolved, top, curBCI);
+                case VTABLE_LOOKUP   -> new InvokeVirtualQuickNode(resolved, top, curBCI);
+                case DIRECT          -> new InvokeSpecialQuickNode(resolved, top, curBCI);
+            };
             // @formatter:on
         }
-        return invoke;
     }
 
     @TruffleBoundary
@@ -3344,6 +3238,9 @@ public final class BytecodeNode extends AbstractInstrumentableBytecodeNode imple
          * Graal nodes.
          */
         if (!noForeignObjects.isValid() || implicitExceptionProfile) {
+            return false;
+        }
+        if (instrumentation != null) {
             return false;
         }
         if (trivialBytecodesCache == TRIVIAL_UNINITIALIZED) {

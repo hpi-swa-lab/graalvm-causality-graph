@@ -76,6 +76,7 @@ import com.oracle.svm.core.graal.nodes.ReadReturnAddressNode;
 import com.oracle.svm.core.graal.nodes.SubstrateCompressionNode;
 import com.oracle.svm.core.graal.nodes.SubstrateNarrowOopStamp;
 import com.oracle.svm.core.graal.nodes.SubstrateReflectionGetCallerClassNode;
+import com.oracle.svm.core.graal.nodes.TestDeoptimizeNode;
 import com.oracle.svm.core.graal.stackvalue.LateStackValueNode;
 import com.oracle.svm.core.graal.stackvalue.StackValueNode;
 import com.oracle.svm.core.graal.stackvalue.UnsafeLateStackValue;
@@ -91,6 +92,7 @@ import com.oracle.svm.core.layeredimagesingleton.ApplicationLayerOnlyImageSingle
 import com.oracle.svm.core.layeredimagesingleton.LayeredImageSingleton;
 import com.oracle.svm.core.layeredimagesingleton.LayeredImageSingletonBuilderFlags;
 import com.oracle.svm.core.layeredimagesingleton.LayeredImageSingletonSupport;
+import com.oracle.svm.core.layeredimagesingleton.MultiLayeredImageSingleton;
 import com.oracle.svm.core.option.HostedOptionKey;
 import com.oracle.svm.core.snippets.KnownIntrinsics;
 import com.oracle.svm.core.util.UserError;
@@ -101,7 +103,6 @@ import com.oracle.svm.hosted.ReachabilityRegistrationNode;
 import com.oracle.svm.hosted.code.SubstrateCompilationDirectives;
 import com.oracle.svm.hosted.nodes.DeoptProxyNode;
 import com.oracle.svm.hosted.nodes.ReadReservedRegister;
-import com.oracle.svm.hosted.nodes.TestDeoptimizeNode;
 import com.oracle.svm.hosted.substitute.AnnotationSubstitutionProcessor;
 
 import jdk.graal.compiler.core.common.CompressEncoding;
@@ -138,6 +139,7 @@ import jdk.graal.compiler.nodes.java.DynamicNewInstanceWithExceptionNode;
 import jdk.graal.compiler.nodes.java.InstanceOfDynamicNode;
 import jdk.graal.compiler.nodes.java.NewArrayNode;
 import jdk.graal.compiler.nodes.java.StoreIndexedNode;
+import jdk.graal.compiler.nodes.java.ValidateNewInstanceClassNode;
 import jdk.graal.compiler.nodes.spi.ArrayLengthProvider;
 import jdk.graal.compiler.nodes.spi.Replacements;
 import jdk.graal.compiler.nodes.type.NarrowOopStamp;
@@ -849,10 +851,11 @@ public class SubstrateGraphBuilderPlugins {
                 EnsureClassInitializedNode ensureInitialized = b.append(new EnsureClassInitializedNode(clazzNonNull));
                 ensureInitialized.setStateAfter(b.getInvocationPluginBeforeState());
 
+                ValidateNewInstanceClassNode clazzLegal = b.add(new ValidateNewInstanceClassNode(clazzNonNull));
                 if (b.currentBlockCatchesOOM()) {
-                    DynamicNewInstanceWithExceptionNode.createAndPush(b, clazzNonNull, true);
+                    b.addPush(JavaKind.Object, new DynamicNewInstanceWithExceptionNode(clazzLegal, true));
                 } else {
-                    DynamicNewInstanceNode.createAndPush(b, clazzNonNull, true);
+                    b.addPush(JavaKind.Object, new DynamicNewInstanceNode(clazzLegal, true));
                 }
                 return true;
             }
@@ -992,7 +995,9 @@ public class SubstrateGraphBuilderPlugins {
         r.register(new RequiredInvocationPlugin("testDeoptimize") {
             @Override
             public boolean apply(GraphBuilderContext b, ResolvedJavaMethod targetMethod, Receiver receiver) {
-                b.add(new TestDeoptimizeNode());
+                if (!SubstrateCompilationDirectives.isDeoptTarget(b.getMethod())) {
+                    b.add(new TestDeoptimizeNode());
+                }
                 return true;
             }
         });
@@ -1009,9 +1014,9 @@ public class SubstrateGraphBuilderPlugins {
             public boolean apply(GraphBuilderContext b, ResolvedJavaMethod targetMethod, Receiver unused, ValueNode clazz) {
                 ValueNode clazzNonNull = b.nullCheckedValue(clazz, DeoptimizationAction.None);
                 if (b.currentBlockCatchesOOM()) {
-                    DynamicNewInstanceWithExceptionNode.createAndPush(b, clazzNonNull, false);
+                    b.addPush(JavaKind.Object, new DynamicNewInstanceWithExceptionNode(clazzNonNull, true));
                 } else {
-                    DynamicNewInstanceNode.createAndPush(b, clazzNonNull, false);
+                    b.addPush(JavaKind.Object, new DynamicNewInstanceNode(clazzNonNull, true));
                 }
                 return true;
             }
@@ -1167,6 +1172,18 @@ public class SubstrateGraphBuilderPlugins {
             public boolean apply(GraphBuilderContext b, ResolvedJavaMethod targetMethod, Receiver unused, ValueNode classNode) {
                 Class<?> key = constantObjectParameter(b, targetMethod, 0, Class.class, classNode);
                 boolean result = ImageSingletons.contains(key);
+                if (!result && ImageLayerBuildingSupport.buildingImageLayer()) {
+                    if (ApplicationLayerOnlyImageSingleton.class.isAssignableFrom(key) || MultiLayeredImageSingleton.class.isAssignableFrom(key)) {
+                        /*
+                         * ApplicationLayerOnlyImageSingletons and the array representation of a
+                         * MultiLayeredImageSingleton will only be created in the final layer.
+                         * However, we assume they exist in all layers. If lookup/getAllLayers is
+                         * called on this key, then our infrastructure will ensure it is either
+                         * created in the application layer or produce a buildtime error.
+                         */
+                        result = true;
+                    }
+                }
                 b.addPush(JavaKind.Boolean, ConstantNode.forBoolean(result));
                 return true;
             }

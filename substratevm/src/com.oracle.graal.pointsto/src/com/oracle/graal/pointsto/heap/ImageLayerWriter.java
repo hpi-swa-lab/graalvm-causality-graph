@@ -33,6 +33,7 @@ import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.CAN_BE_STATI
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.CLASS_JAVA_NAME_TAG;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.CLASS_NAME_TAG;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.CODE_SIZE_TAG;
+import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.CODE_TAG;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.COMPONENT_TYPE_TAG;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.CONSTANTS_TAG;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.CONSTANTS_TO_RELINK_TAG;
@@ -54,14 +55,23 @@ import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.INSTANCE_TAG
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.INTERFACES_TAG;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.INTRINSIC_TAG;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.IS_CONSTRUCTOR_TAG;
+import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.IS_DIRECT_ROOT_METHOD;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.IS_ENUM_TAG;
+import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.IS_IMPLEMENTATION_INVOKED;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.IS_INITIALIZED_TAG;
+import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.IS_INSTANTIATED;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.IS_INTERFACE_TAG;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.IS_INTERNAL_TAG;
+import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.IS_INTRINSIC_METHOD;
+import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.IS_INVOKED;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.IS_LINKED_TAG;
+import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.IS_REACHABLE;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.IS_SYNTHETIC_TAG;
+import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.IS_UNSAFE_ALLOCATED;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.IS_VAR_ARGS_TAG;
+import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.IS_VIRTUAL_ROOT_METHOD;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.METHODS_TAG;
+import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.METHOD_HANDLE_INTRINSIC_TAG;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.MODIFIERS_TAG;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.NAME_TAG;
 import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.NEXT_FIELD_ID_TAG;
@@ -83,17 +93,23 @@ import static com.oracle.graal.pointsto.heap.ImageLayerSnapshotUtil.VALUE_TAG;
 import static jdk.graal.compiler.java.LambdaUtils.LAMBDA_CLASS_NAME_SUBSTRING;
 
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.lang.reflect.Executable;
 import java.lang.reflect.Field;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.charset.Charset;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashSet;
+import java.util.EnumSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.IntStream;
 
 import org.graalvm.collections.EconomicMap;
@@ -117,10 +133,13 @@ import jdk.graal.compiler.util.ObjectCopier;
 import jdk.graal.compiler.util.json.JsonWriter;
 import jdk.vm.ci.meta.JavaConstant;
 import jdk.vm.ci.meta.JavaKind;
+import jdk.vm.ci.meta.MethodHandleAccessProvider.IntrinsicMethod;
 import jdk.vm.ci.meta.PrimitiveConstant;
 import jdk.vm.ci.meta.ResolvedJavaField;
 
 public class ImageLayerWriter {
+    static final Charset GRAPHS_CHARSET = Charset.defaultCharset();
+
     protected final ImageLayerSnapshotUtil imageLayerSnapshotUtil;
     private ImageLayerWriterHelper imageLayerWriterHelper;
     private ImageHeap imageHeap;
@@ -130,16 +149,57 @@ public class ImageLayerWriter {
     protected final EconomicMap<String, Object> jsonMap;
     protected final List<Integer> constantsToRelink;
     private final Set<Integer> persistedTypeIds;
+    private final Set<Integer> persistedMethodIds;
     protected final Map<String, EconomicMap<String, Object>> typesMap;
     protected final Map<String, EconomicMap<String, Object>> methodsMap;
     protected final Map<String, Map<String, Object>> fieldsMap;
     private final Map<String, EconomicMap<String, Object>> constantsMap;
-    FileInfo fileInfo;
+    private FileInfo fileInfo;
+    private GraphsOutput graphsOutput;
     private final boolean useSharedLayerGraphs;
 
     protected final Set<AnalysisFuture<Void>> elementsToPersist = ConcurrentHashMap.newKeySet();
 
-    private record FileInfo(Path layerSnapshotPath, String fileName, String suffix) {
+    private record FileInfo(Path layerFilePath, String fileName, String suffix) {
+    }
+
+    private static class GraphsOutput {
+        private final Path path;
+        private final Path tempPath;
+        private final FileChannel tempChannel;
+
+        private final AtomicLong currentOffset = new AtomicLong(0);
+
+        GraphsOutput(Path path, String fileName, String suffix) {
+            this.path = path;
+            this.tempPath = FileDumpingUtil.createTempFile(path.getParent(), fileName, suffix);
+            try {
+                this.tempChannel = FileChannel.open(this.tempPath, EnumSet.of(StandardOpenOption.WRITE));
+            } catch (IOException e) {
+                throw GraalError.shouldNotReachHere(e, "Error opening temporary graphs file.");
+            }
+        }
+
+        String add(String encodedGraph) {
+            ByteBuffer encoded = GRAPHS_CHARSET.encode(encodedGraph);
+            int size = encoded.limit();
+            long offset = currentOffset.getAndAdd(size);
+            try {
+                tempChannel.write(encoded, offset);
+            } catch (Exception e) {
+                throw GraalError.shouldNotReachHere(e, "Error during graphs file dumping.");
+            }
+            return new StringBuilder("@").append(offset).append("[").append(size).append("]").toString();
+        }
+
+        void finish() {
+            try {
+                tempChannel.close();
+                FileDumpingUtil.moveTryAtomically(tempPath, path);
+            } catch (Exception e) {
+                throw GraalError.shouldNotReachHere(e, "Error during graphs file dumping.");
+            }
+        }
     }
 
     public ImageLayerWriter() {
@@ -152,7 +212,8 @@ public class ImageLayerWriter {
         this.imageLayerSnapshotUtil = imageLayerSnapshotUtil;
         this.jsonMap = EconomicMap.create();
         this.constantsToRelink = new ArrayList<>();
-        this.persistedTypeIds = new HashSet<>();
+        this.persistedTypeIds = ConcurrentHashMap.newKeySet();
+        this.persistedMethodIds = ConcurrentHashMap.newKeySet();
         this.typesMap = new ConcurrentHashMap<>();
         this.methodsMap = new ConcurrentHashMap<>();
         this.fieldsMap = new ConcurrentHashMap<>();
@@ -171,17 +232,24 @@ public class ImageLayerWriter {
         this.imageLayerWriterHelper = imageLayerWriterHelper;
     }
 
-    public void setFileInfo(Path layerSnapshotPath, String fileName, String suffix) {
+    public void setSnapshotFileInfo(Path layerSnapshotPath, String fileName, String suffix) {
         fileInfo = new FileInfo(layerSnapshotPath, fileName, suffix);
+    }
+
+    public void openGraphsOutput(Path layerGraphsPath, String fileName, String suffix) {
+        AnalysisError.guarantee(graphsOutput == null, "Graphs file has already been opened");
+        graphsOutput = new GraphsOutput(layerGraphsPath, fileName, suffix);
     }
 
     public void setAnalysisUniverse(AnalysisUniverse aUniverse) {
         this.aUniverse = aUniverse;
     }
 
-    public void dumpFile() {
-        FileDumpingUtil.dumpFile(fileInfo.layerSnapshotPath, fileInfo.fileName, fileInfo.suffix, writer -> {
-            try (JsonWriter jw = new JsonWriter(writer)) {
+    public void dumpFiles() {
+        graphsOutput.finish();
+
+        FileDumpingUtil.dumpFile(fileInfo.layerFilePath, fileInfo.fileName, fileInfo.suffix, outputStream -> {
+            try (JsonWriter jw = new JsonWriter(new PrintWriter(outputStream))) {
                 jw.print(jsonMap);
             } catch (IOException e) {
                 throw new RuntimeException(e);
@@ -191,6 +259,10 @@ public class ImageLayerWriter {
 
     public void persistImageHeapSize(long imageHeapSize) {
         jsonMap.put(IMAGE_HEAP_SIZE_TAG, String.valueOf(imageHeapSize));
+    }
+
+    protected boolean shouldPersistMethod(AnalysisMethod method) {
+        return method.isReachable();
     }
 
     public void persistAnalysisInfo() {
@@ -212,7 +284,7 @@ public class ImageLayerWriter {
         }
         jsonMap.put(TYPES_TAG, typesMap);
 
-        for (AnalysisMethod method : aUniverse.getMethods().stream().filter(AnalysisMethod::isReachable).toList()) {
+        for (AnalysisMethod method : aUniverse.getMethods().stream().filter(this::shouldPersistMethod).toList()) {
             persistMethod(method);
         }
         jsonMap.put(METHODS_TAG, methodsMap);
@@ -254,9 +326,7 @@ public class ImageLayerWriter {
              * Some persisted types are not reachable. In this case, the super class has to be
              * persisted manually as well.
              */
-            if (!superclass.isReachable()) {
-                persistType(superclass);
-            }
+            persistType(superclass);
         }
         EconomicMap<String, Object> typeMap = EconomicMap.create();
 
@@ -295,6 +365,12 @@ public class ImageLayerWriter {
         }
         typeMap.put(INTERFACES_TAG, Arrays.stream(type.getInterfaces()).map(AnalysisType::getId).toList());
         typeMap.put(ANNOTATIONS_TAG, Arrays.stream(AnnotationAccess.getAnnotationTypes(type)).map(Class::getName).toList());
+
+        typeMap.put(IS_INSTANTIATED, type.isInstantiated());
+        typeMap.put(IS_UNSAFE_ALLOCATED, type.isUnsafeAllocated());
+        typeMap.put(IS_REACHABLE, type.isReachable());
+
+        imageLayerWriterHelper.persistType(type, typeMap);
     }
 
     /**
@@ -307,7 +383,14 @@ public class ImageLayerWriter {
     }
 
     public void persistMethod(AnalysisMethod method) {
+        if (!persistedMethodIds.add(method.getId())) {
+            return;
+        }
         EconomicMap<String, Object> methodMap = getMethodMap(method);
+        persistMethod(method, methodMap);
+    }
+
+    protected void persistMethod(AnalysisMethod method, EconomicMap<String, Object> methodMap) {
         Executable executable = method.getJavaMethod();
 
         if (methodMap.containsKey(ID_TAG)) {
@@ -327,8 +410,22 @@ public class ImageLayerWriter {
         methodMap.put(MODIFIERS_TAG, method.getModifiers());
         methodMap.put(IS_CONSTRUCTOR_TAG, method.isConstructor());
         methodMap.put(IS_SYNTHETIC_TAG, method.isSynthetic());
+        byte[] code = method.getCode();
+        if (code != null) {
+            methodMap.put(CODE_TAG, getString(JavaKind.Byte, method.getCode()));
+        }
         methodMap.put(CODE_SIZE_TAG, method.getCodeSize());
+        IntrinsicMethod intrinsicMethod = aUniverse.getBigbang().getConstantReflectionProvider().getMethodHandleAccess().lookupMethodHandleIntrinsic(method);
+        if (intrinsicMethod != null) {
+            methodMap.put(METHOD_HANDLE_INTRINSIC_TAG, intrinsicMethod.name());
+        }
         methodMap.put(ANNOTATIONS_TAG, Arrays.stream(AnnotationAccess.getAnnotationTypes(method)).map(Class::getName).toList());
+
+        methodMap.put(IS_VIRTUAL_ROOT_METHOD, method.isVirtualRootMethod());
+        methodMap.put(IS_DIRECT_ROOT_METHOD, method.isDirectRootMethod());
+        methodMap.put(IS_INVOKED, method.isSimplyInvoked());
+        methodMap.put(IS_IMPLEMENTATION_INVOKED, method.isSimplyImplementationInvoked());
+        methodMap.put(IS_INTRINSIC_METHOD, method.isIntrinsicMethod());
 
         imageLayerWriterHelper.persistMethod(method, methodMap);
     }
@@ -351,18 +448,22 @@ public class ImageLayerWriter {
 
         Object analyzedGraph = method.getGraph();
         if (analyzedGraph instanceof AnalysisParsedGraph analysisParsedGraph) {
-            if (!persistGraph(analysisParsedGraph.getEncodedGraph(), methodMap, ANALYSIS_PARSED_GRAPH_TAG)) {
-                return;
+            if (!methodMap.containsKey(INTRINSIC_TAG)) {
+                if (!persistGraph(analysisParsedGraph.getEncodedGraph(), methodMap, ANALYSIS_PARSED_GRAPH_TAG)) {
+                    return;
+                }
+                methodMap.put(INTRINSIC_TAG, analysisParsedGraph.isIntrinsic());
             }
-            methodMap.put(INTRINSIC_TAG, analysisParsedGraph.isIntrinsic());
         }
     }
 
     public void persistMethodStrengthenedGraph(AnalysisMethod method) {
         EconomicMap<String, Object> methodMap = getMethodMap(method);
 
-        EncodedGraph analyzedGraph = method.getAnalyzedGraph();
-        persistGraph(analyzedGraph, methodMap, STRENGTHENED_GRAPH_TAG);
+        if (!methodMap.containsKey(STRENGTHENED_GRAPH_TAG)) {
+            EncodedGraph analyzedGraph = method.getAnalyzedGraph();
+            persistGraph(analyzedGraph, methodMap, STRENGTHENED_GRAPH_TAG);
+        }
     }
 
     private boolean persistGraph(EncodedGraph analyzedGraph, EconomicMap<String, Object> methodMap, String graphTag) {
@@ -378,7 +479,8 @@ public class ImageLayerWriter {
         if (encodedGraph.contains(LAMBDA_CLASS_NAME_SUBSTRING)) {
             return false;
         }
-        methodMap.put(graphTag, encodedGraph);
+        String location = graphsOutput.add(encodedGraph);
+        methodMap.put(graphTag, location);
         return true;
     }
 

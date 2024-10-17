@@ -27,6 +27,7 @@ package com.oracle.svm.hosted;
 import java.util.concurrent.ConcurrentHashMap;
 
 import com.oracle.graal.pointsto.heap.ImageHeapConstant;
+import com.oracle.svm.core.BuildPhaseProvider;
 import com.oracle.svm.core.feature.AutomaticallyRegisteredFeature;
 import com.oracle.svm.core.feature.InternalFeature;
 import com.oracle.svm.core.fieldvaluetransformer.FieldValueTransformerWithAvailability;
@@ -93,6 +94,8 @@ public class ClassLoaderFeature implements InternalFeature {
                 return registry.getConstant(PLATFORM_KEY_NAME);
             } else if (loader == bootClassLoader) {
                 return registry.getConstant(BOOT_KEY_NAME);
+            } else if (HostedClassLoaderPackageManagement.isGeneratedSerializationClassLoader(loader)) {
+                return registry.getConstant(HostedClassLoaderPackageManagement.getClassLoaderSerializationLookupKey(loader));
             } else {
                 throw VMError.shouldNotReachHere("Currently unhandled class loader seen in extension layer: %s", loader);
             }
@@ -125,14 +128,22 @@ public class ClassLoaderFeature implements InternalFeature {
         access.registerFieldValueTransformer(packagesField, new FieldValueTransformerWithAvailability() {
 
             @Override
-            public ValueAvailability valueAvailability() {
-                return ValueAvailability.AfterAnalysis;
+            public boolean isAvailable() {
+                return BuildPhaseProvider.isHostedUniverseBuilt();
             }
 
             @Override
             public Object transform(Object receiver, Object originalValue) {
                 assert receiver instanceof ClassLoader : receiver;
                 assert originalValue instanceof ConcurrentHashMap : "Underlying representation has changed: " + originalValue;
+
+                if (ImageLayerBuildingSupport.buildingInitialLayer()) {
+                    var registry = CrossLayerConstantRegistry.singletonOrNull();
+                    ClassLoader classLoader = (ClassLoader) receiver;
+                    if (HostedClassLoaderPackageManagement.isGeneratedSerializationClassLoader(classLoader)) {
+                        registry.registerHeapConstant(HostedClassLoaderPackageManagement.getClassLoaderSerializationLookupKey(classLoader), receiver);
+                    }
+                }
 
                 /* Retrieving initial package state for this class loader. */
                 ConcurrentHashMap<String, Package> packages = HostedClassLoaderPackageManagement.singleton().getRegisteredPackages((ClassLoader) receiver);

@@ -29,6 +29,7 @@ import static com.oracle.truffle.espresso.bytecode.Bytecodes.PUTFIELD;
 import static com.oracle.truffle.espresso.bytecode.Bytecodes.PUTSTATIC;
 import static com.oracle.truffle.espresso.bytecode.Bytecodes.RETURN;
 import static com.oracle.truffle.espresso.classfile.Constants.ACC_CALLER_SENSITIVE;
+import static com.oracle.truffle.espresso.classfile.Constants.ACC_DONT_INLINE;
 import static com.oracle.truffle.espresso.classfile.Constants.ACC_FINAL;
 import static com.oracle.truffle.espresso.classfile.Constants.ACC_FORCE_INLINE;
 import static com.oracle.truffle.espresso.classfile.Constants.ACC_HIDDEN;
@@ -79,6 +80,7 @@ import com.oracle.truffle.espresso.classfile.attributes.ExceptionsAttribute;
 import com.oracle.truffle.espresso.classfile.attributes.LineNumberTableAttribute;
 import com.oracle.truffle.espresso.classfile.attributes.LocalVariableTable;
 import com.oracle.truffle.espresso.classfile.attributes.SignatureAttribute;
+import com.oracle.truffle.espresso.descriptors.ByteSequence;
 import com.oracle.truffle.espresso.descriptors.Signatures;
 import com.oracle.truffle.espresso.descriptors.Symbol;
 import com.oracle.truffle.espresso.descriptors.Symbol.Name;
@@ -106,9 +108,9 @@ import com.oracle.truffle.espresso.nodes.methodhandle.MethodHandleIntrinsicNode;
 import com.oracle.truffle.espresso.runtime.Attribute;
 import com.oracle.truffle.espresso.runtime.EspressoContext;
 import com.oracle.truffle.espresso.runtime.EspressoThreadLocalState;
-import com.oracle.truffle.espresso.runtime.GuestAllocator;
 import com.oracle.truffle.espresso.runtime.MethodHandleIntrinsics;
 import com.oracle.truffle.espresso.runtime.staticobject.StaticObject;
+import com.oracle.truffle.espresso.substitutions.JavaType;
 import com.oracle.truffle.espresso.vm.InterpreterToVM;
 import com.oracle.truffle.espresso.vm.VM.EspressoStackElement;
 
@@ -498,26 +500,55 @@ public final class Method extends Member<Signature> implements TruffleObject, Co
      * e.g. Host (boxed) Integer represents int, guest Integer doesn't.
      */
     @TruffleBoundary
-    public Object invokeDirect(Object self, Object... args) {
+    public Object invokeDirect(Object... args) {
         EspressoThreadLocalState tls = getLanguage().getThreadLocalState();
         // Impossible to call from guest code, so what is above is illegal for continuations.
         tls.blockContinuationSuspension();
         try {
             getContext().getJNI().clearPendingException();
-            if (isStatic()) {
-                assert args.length == Signatures.parameterCount(getParsedSignature());
-                getDeclaringKlass().safeInitialize();
-                return getCallTarget().call(args);
-            } else {
-                assert args.length + 1 /* self */ == Signatures.parameterCount(getParsedSignature()) + (isStatic() ? 0 : 1);
-                Object[] fullArgs = new Object[args.length + 1];
-                System.arraycopy(args, 0, fullArgs, 1, args.length);
-                fullArgs[0] = self;
-                return getCallTarget().call(fullArgs);
-            }
+            assert !isStatic();
+            assert args.length == Signatures.parameterCount(getParsedSignature()) + 1;
+            assert getDeclaringKlass().isAssignableFrom(((StaticObject) args[0]).getKlass());
+            return getCallTarget().call(args);
         } finally {
             tls.unblockContinuationSuspension();
         }
+    }
+
+    @TruffleBoundary
+    public Object invokeDirectStatic(Object... args) {
+        EspressoThreadLocalState tls = getLanguage().getThreadLocalState();
+        // Impossible to call from guest code, so what is above is illegal for continuations.
+        tls.blockContinuationSuspension();
+        try {
+            getContext().getJNI().clearPendingException();
+            assert isStatic();
+            assert args.length == Signatures.parameterCount(getParsedSignature());
+            getDeclaringKlass().safeInitialize();
+            return getCallTarget().call(args);
+        } finally {
+            tls.unblockContinuationSuspension();
+        }
+    }
+
+    @TruffleBoundary
+    public Object invokeDirectVirtual(Object... args) {
+        assert getVTableIndex() >= 0;
+        StaticObject self = (StaticObject) args[0];
+        return self.getKlass().vtableLookup(getVTableIndex()).invokeDirect(args);
+    }
+
+    @TruffleBoundary
+    public Object invokeDirectInterface(Object... args) {
+        assert getITableIndex() >= 0;
+        StaticObject self = (StaticObject) args[0];
+        return ((ObjectKlass) self.getKlass()).itableLookup(getDeclaringKlass(), getITableIndex()).invokeDirect(args);
+    }
+
+    @TruffleBoundary
+    public Object invokeDirectSpecial(Object... args) {
+        assert isFinalFlagSet() || getDeclaringKlass().isFinalFlagSet() || isPrivate() || isConstructor();
+        return invokeDirect(args);
     }
 
     public boolean isClassInitializer() {
@@ -539,7 +570,12 @@ public final class Method extends Member<Signature> implements TruffleObject, Co
      * of the boot loader are ignored.
      */
     public boolean isForceInline() {
-        return (getModifiers() & ACC_FORCE_INLINE) != 0 && StaticObject.isNull(getDeclaringKlass().getDefiningClassLoader());
+        return (getModifiers() & ACC_FORCE_INLINE) != 0;
+    }
+
+    public boolean isDontInline() {
+        // Respect in truffle compilations when that's possible (GR-57507)
+        return (getModifiers() & ACC_DONT_INLINE) != 0;
     }
 
     public boolean isHidden() {
@@ -597,13 +633,13 @@ public final class Method extends Member<Signature> implements TruffleObject, Co
     public static Method getHostReflectiveMethodRoot(StaticObject seed, Meta meta) {
         assert seed.getKlass().getMeta().java_lang_reflect_Method.isAssignableFrom(seed.getKlass());
         StaticObject curMethod = seed;
-        while (curMethod != null && StaticObject.notNull(curMethod)) {
+        do {
             Method target = (Method) meta.HIDDEN_METHOD_KEY.getHiddenObject(curMethod);
             if (target != null) {
                 return target;
             }
             curMethod = meta.java_lang_reflect_Method_root.getObject(curMethod);
-        }
+        } while (StaticObject.notNull(curMethod));
         CompilerDirectives.transferToInterpreterAndInvalidate();
         throw EspressoError.shouldNotReachHere("Could not find HIDDEN_METHOD_KEY");
     }
@@ -611,15 +647,58 @@ public final class Method extends Member<Signature> implements TruffleObject, Co
     public static Method getHostReflectiveConstructorRoot(StaticObject seed, Meta meta) {
         assert seed.getKlass().getMeta().java_lang_reflect_Constructor.isAssignableFrom(seed.getKlass());
         StaticObject curMethod = seed;
-        while (curMethod != null && StaticObject.notNull(curMethod)) {
+        StaticObject rootMethod;
+        do {
             Method target = (Method) meta.HIDDEN_CONSTRUCTOR_KEY.getHiddenObject(curMethod);
             if (target != null) {
                 return target;
             }
+            rootMethod = curMethod;
             curMethod = meta.java_lang_reflect_Constructor_root.getObject(curMethod);
+        } while ((StaticObject.notNull(curMethod)));
+        CompilerDirectives.transferToInterpreter();
+        // the root Constructor was not created by makeConstructor
+        // this can happen in ReflectionFactory#generateConstructor
+        // use the reflection data to find the constructor.
+        // the best would be to use the slot, but we don't have a redefinition-stable int that
+        // identifies the constructor.
+        Klass holder = meta.java_lang_reflect_Constructor_clazz.getObject(rootMethod).getMirrorKlass(meta);
+        Symbol<Signature> signature = rebuildConstructorSignature(meta, rootMethod);
+        assert signature != null;
+        Method method = holder.lookupDeclaredMethod(Name._init_, signature, Klass.LookupMode.INSTANCE_ONLY);
+        assert method != null;
+        // remember the mapping for the next query
+        meta.HIDDEN_CONSTRUCTOR_KEY.setHiddenObject(rootMethod, method);
+        return method;
+    }
+
+    private static Symbol<Signature> rebuildConstructorSignature(Meta meta, StaticObject rootMethod) {
+        StaticObject ptypes = meta.java_lang_reflect_Constructor_parameterTypes.getObject(rootMethod);
+        return meta.getSignatures().lookupValidSignature(getSignatureFromGuestDescription(ptypes, meta._void.mirror(), meta));
+    }
+
+    public static ByteSequence getSignatureFromGuestDescription(@JavaType(Class[].class) StaticObject ptypes,
+                    @JavaType(Class.class) StaticObject rtype, Meta meta) {
+        Symbol<Type> returnType = rtype.getMirrorKlass(meta).getType();
+        StaticObject[] parameterTypes = ptypes.unwrap(meta.getLanguage());
+        int len = 2;
+        for (StaticObject parameterType : parameterTypes) {
+            len += parameterType.getMirrorKlass(meta).getType().length();
         }
-        CompilerDirectives.transferToInterpreterAndInvalidate();
-        throw EspressoError.shouldNotReachHere("Could not find HIDDEN_CONSTRUCTOR_KEY");
+        len += returnType.length();
+        byte[] bytes = new byte[len];
+        int pos = 0;
+        bytes[pos++] = '(';
+        for (StaticObject parameterType : parameterTypes) {
+            Symbol<Type> paramType = parameterType.getMirrorKlass(meta).getType();
+            paramType.writeTo(bytes, pos);
+            pos += paramType.length();
+        }
+        bytes[pos++] = ')';
+        returnType.writeTo(bytes, pos);
+        pos += returnType.length();
+        assert pos == bytes.length;
+        return ByteSequence.wrap(bytes);
     }
 
     // Polymorphic signature method 'creation'
@@ -714,7 +793,7 @@ public final class Method extends Member<Signature> implements TruffleObject, Co
     }
 
     public boolean isInlinableGetter() {
-        if (!getSubstitutions().hasSubstitutionFor(this)) {
+        if (!getSubstitutions().hasSubstitutionFor(this) && !isDontInline()) {
             if (getParameterCount() == 0 && !isAbstract() && !isNative() && !isSynchronized()) {
                 return hasGetterBytecodes();
             }
@@ -737,7 +816,7 @@ public final class Method extends Member<Signature> implements TruffleObject, Co
     }
 
     public boolean isInlinableSetter() {
-        if (!getSubstitutions().hasSubstitutionFor(this)) {
+        if (!getSubstitutions().hasSubstitutionFor(this) && !isDontInline()) {
             if (getParameterCount() == 1 && !isAbstract() && !isNative() && !isSynchronized()) {
                 return hasSetterBytecodes();
             }
@@ -863,17 +942,6 @@ public final class Method extends Member<Signature> implements TruffleObject, Co
 
     public String getSignatureAsString() {
         return getRawSignature().toString();
-    }
-
-    @TruffleBoundary
-    public Object invokeMethod(Object callee, Object[] args) {
-        if (isConstructor()) {
-            GuestAllocator.AllocationChecks.checkCanAllocateNewReference(getMeta(), getDeclaringKlass(), false);
-            Object theCallee = getAllocator().createNew(getDeclaringKlass());
-            invokeWithConversions(theCallee, args);
-            return theCallee;
-        }
-        return invokeWithConversions(callee, args);
     }
 
     public String getGenericSignatureAsString() {
@@ -1085,7 +1153,7 @@ public final class Method extends Member<Signature> implements TruffleObject, Co
         }
 
         StaticObject instance = meta.java_lang_reflect_Constructor.allocateInstance(getContext());
-        meta.java_lang_reflect_Constructor_init.invokeDirect(
+        meta.java_lang_reflect_Constructor_init.invokeDirectSpecial(
                         /* this */ instance,
                         /* declaringKlass */ getDeclaringKlass().mirror(),
                         /* parameterTypes */ parameterTypes,
@@ -1151,7 +1219,7 @@ public final class Method extends Member<Signature> implements TruffleObject, Co
 
         StaticObject instance = meta.java_lang_reflect_Method.allocateInstance(meta.getContext());
 
-        meta.java_lang_reflect_Method_init.invokeDirect(
+        meta.java_lang_reflect_Method_init.invokeDirectSpecial(
                         /* this */ instance,
                         /* declaringClass */ getDeclaringKlass().mirror(),
                         /* name */ getContext().getStrings().intern(getName()),
@@ -1281,6 +1349,24 @@ public final class Method extends Member<Signature> implements TruffleObject, Co
                 } // (else) Most likely generated bytecodes with dummy LineNumberTable attribute.
             }
             return s.createUnavailableSection();
+        }
+
+        public SourceSection getSourceSectionAtBCI(int bci) {
+            Source s = getSource();
+            if (s == null) {
+                return null;
+            }
+            if (codeAttribute == null) {
+                return s.createUnavailableSection();
+            }
+            if (bci < 0 || bci >= codeAttribute.getOriginalCode().length) {
+                return s.createUnavailableSection();
+            }
+            int line = codeAttribute.bciToLineNumber(bci);
+            if (line < 0) {
+                return s.createUnavailableSection();
+            }
+            return s.createSection(line);
         }
 
         public void initRefKind() {
@@ -1604,13 +1690,35 @@ public final class Method extends Member<Signature> implements TruffleObject, Co
         }
 
         @Override
-        public Object invokeMethod(Object callee, Object[] args) {
+        public Object invokeMethodVirtual(Object... args) {
+            checkRemovedByRedefinition();
+            return invokeDirectVirtual(args);
+        }
+
+        @Override
+        public Object invokeMethodStatic(Object... args) {
+            checkRemovedByRedefinition();
+            return invokeDirectStatic(args);
+        }
+
+        @Override
+        public Object invokeMethodSpecial(Object... args) {
+            checkRemovedByRedefinition();
+            return invokeDirectSpecial(args);
+        }
+
+        @Override
+        public Object invokeInterfaceMethod(Object... args) {
+            checkRemovedByRedefinition();
+            return invokeDirectInterface(args);
+        }
+
+        private void checkRemovedByRedefinition() {
             if (getMethod().isRemovedByRedefinition()) {
                 Meta meta = getMeta();
                 throw meta.throwExceptionWithMessage(meta.java_lang_NoSuchMethodError,
                                 meta.toGuestString(getMethod().getDeclaringKlass().getNameAsString() + "." + getName() + getRawSignature()));
             }
-            return getMethod().invokeMethod(callee, args);
         }
 
         @Override
@@ -1629,11 +1737,6 @@ public final class Method extends Member<Signature> implements TruffleObject, Co
         @Override
         public KlassRef getDeclaringKlassRef() {
             return getMethod().getDeclaringKlass();
-        }
-
-        @Override
-        public int getFirstLine() {
-            return getLineNumberTable().getFirstLine();
         }
 
         @Override
@@ -1669,6 +1772,16 @@ public final class Method extends Member<Signature> implements TruffleObject, Co
         @Override
         public boolean isObsolete() {
             return !klassVersion.getAssumption().isValid();
+        }
+
+        @Override
+        public boolean isConstructor() {
+            return getMethod().isConstructor();
+        }
+
+        @Override
+        public boolean isClassInitializer() {
+            return getMethod().isClassInitializer();
         }
 
         @Override

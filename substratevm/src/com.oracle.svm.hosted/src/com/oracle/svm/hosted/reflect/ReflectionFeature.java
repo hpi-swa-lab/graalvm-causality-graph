@@ -53,6 +53,7 @@ import com.oracle.graal.pointsto.meta.AnalysisMethod;
 import com.oracle.graal.pointsto.meta.AnalysisUniverse;
 import com.oracle.graal.pointsto.reports.causality.CausalityExport;
 import com.oracle.graal.pointsto.reports.causality.events.CausalityEvents;
+import com.oracle.svm.core.BuildPhaseProvider;
 import com.oracle.svm.core.ParsingReason;
 import com.oracle.svm.core.SubstrateOptions;
 import com.oracle.svm.core.annotate.Delete;
@@ -344,7 +345,7 @@ public class ReflectionFeature implements InternalFeature, ReflectionSubstitutio
          * to see SubstrateMethodAccessor.vtableOffset before we register the transformer.
          */
         access.registerFieldValueTransformer(ReflectionUtil.lookupField(SubstrateMethodAccessor.class, "vtableOffset"), new ComputeVTableOffset());
-        if (!SubstrateOptions.closedTypeWorld()) {
+        if (!SubstrateOptions.useClosedTypeWorldHubLayout()) {
             access.registerFieldValueTransformer(ReflectionUtil.lookupField(SubstrateMethodAccessor.class, "interfaceTypeID"), new ComputeInterfaceTypeID());
         }
 
@@ -471,8 +472,8 @@ final class SignatureKey {
 
 final class ComputeVTableOffset implements FieldValueTransformerWithAvailability {
     @Override
-    public ValueAvailability valueAvailability() {
-        return ValueAvailability.AfterAnalysis;
+    public boolean isAvailable() {
+        return BuildPhaseProvider.isHostedUniverseBuilt();
     }
 
     @Override
@@ -481,7 +482,7 @@ final class ComputeVTableOffset implements FieldValueTransformerWithAvailability
 
         if (accessor.getVTableOffset() == SubstrateMethodAccessor.OFFSET_NOT_YET_COMPUTED) {
             SharedMethod member = ImageSingletons.lookup(ReflectionFeature.class).hostedMetaAccess().lookupJavaMethod(accessor.getMember());
-            if (SubstrateOptions.closedTypeWorld()) {
+            if (SubstrateOptions.useClosedTypeWorldHubLayout()) {
                 return KnownOffsets.singleton().getVTableOffset(member.getVTableIndex(), true);
             } else {
                 return KnownOffsets.singleton().getVTableOffset(member.getVTableIndex(), false);
@@ -495,8 +496,8 @@ final class ComputeVTableOffset implements FieldValueTransformerWithAvailability
 
 final class ComputeInterfaceTypeID implements FieldValueTransformerWithAvailability {
     @Override
-    public ValueAvailability valueAvailability() {
-        return ValueAvailability.AfterAnalysis;
+    public boolean isAvailable() {
+        return BuildPhaseProvider.isHostedUniverseBuilt();
     }
 
     @Override
