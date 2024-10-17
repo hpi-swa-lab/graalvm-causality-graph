@@ -38,8 +38,6 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-import org.graalvm.collections.Pair;
-
 import com.oracle.graal.pointsto.BigBang;
 import com.oracle.graal.pointsto.ObjectScanner;
 import com.oracle.graal.pointsto.PointsToAnalysis;
@@ -109,8 +107,6 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
             return sb.toString();
         }
     }
-
-    private ConcurrentHashMap<Pair<StackTraceElement, StackTraceElement>, ConcurrentHashMap<StackPath, StackPath>> connections = new ConcurrentHashMap<>();
 
     public static class ThreadContext {
         private final Deque<CauseToken> causes = new ArrayDeque<>();
@@ -188,31 +184,21 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
     public void registerEdge(CausalityEvent cause, CausalityEvent consequence) {
         if (cause == null || cause.root()) {
             ThreadContext.CauseToken topCauseToken = threadContexts.get().topCauseToken();
-            if (topCauseToken != null) {
+            cause = topCauseToken == null ? null : topCauseToken.event;
+            if (cause != consequence) {
                 StackTraceElement[] stackTrace = new Throwable().getStackTrace();
                 int nSkip = getSkipCount(stackTrace);
                 StackTraceElement site = stackTrace[nSkip];
-                connections.computeIfAbsent(Pair.create(topCauseToken.site, site), k -> new ConcurrentHashMap<>())
-                        .computeIfAbsent(new StackPath(Arrays.copyOfRange(stackTrace, nSkip, stackTrace.length - topCauseToken.stackDepth)), k -> k);
-                cause = topCauseToken.event;
-                if (cause == consequence) {
-                    return;
-                }
-                var causeConnection = CausalityEvents.CauseConnection.create(topCauseToken.site, site);
-                var causeConnectionStack = CausalityEvents.CauseConnectionStack.create(new ImmutableStackTrace(Arrays.copyOfRange(stackTrace, nSkip, stackTrace.length - topCauseToken.stackDepth)));
+                var causeConnection = CausalityEvents.CauseConnection.create(topCauseToken == null ? null : topCauseToken.site, site);
                 directEdges.put(new Graph.DirectEdge(null, causeConnection), Boolean.TRUE);
+
+                var causeConnectionStack = CausalityEvents.CauseConnectionStack.create(new ImmutableStackTrace(Arrays.copyOfRange(stackTrace, nSkip, stackTrace.length - (topCauseToken == null ? 0 : topCauseToken.stackDepth))));
                 directEdges.put(new Graph.DirectEdge(causeConnection, causeConnectionStack), Boolean.TRUE);
                 registerConjunctiveEdge(cause, causeConnectionStack, consequence);
-                return;
             }
+        } else if (cause != consequence) {
+            directEdges.put(new Graph.DirectEdge(cause, consequence), Boolean.TRUE);
         }
-        if (cause == consequence) {
-            return;
-        }
-        /*if (cause == null && !consequence.root()) {
-            System.err.println("Unknown root!");
-        }*/
-        directEdges.put(new Graph.DirectEdge(cause, consequence), Boolean.TRUE);
     }
 
     private static CausalityEvent getEventForHeapReason(Object customReason, Object o) {
@@ -342,18 +328,6 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
 
     @Override
     protected Graph createCausalityGraph(PointsToAnalysis bb) {
-        System.err.println("#Connections: " + connections.size());
-        System.err.println("#Paths: " + connections.values().stream().mapToInt(Map::size).sum());
-        int i = 0;
-        for (var entry : connections.entrySet()) {
-            System.err.println("--- Connection " + i + ": #Paths: " + entry.getValue().size() + " ---");
-            i++;
-            for (var path : entry.getValue().keySet()) {
-                System.err.println("-");
-                System.err.println(path);
-            }
-        }
-
         Graph g = new Graph();
 
         var directEdges = this.directEdges.keySet();
