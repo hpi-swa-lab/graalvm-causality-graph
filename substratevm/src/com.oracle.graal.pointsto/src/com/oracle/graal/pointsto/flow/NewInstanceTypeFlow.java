@@ -29,11 +29,12 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
 import com.oracle.graal.pointsto.PointsToAnalysis;
-import com.oracle.graal.pointsto.reports.causality.CausalityExport;
 import com.oracle.graal.pointsto.flow.context.AnalysisContext;
 import com.oracle.graal.pointsto.flow.context.object.AnalysisObject;
 import com.oracle.graal.pointsto.meta.AnalysisField;
 import com.oracle.graal.pointsto.meta.AnalysisType;
+import com.oracle.graal.pointsto.reports.causality.CausalityExport;
+import com.oracle.graal.pointsto.reports.causality.events.CausalityEvents;
 import com.oracle.graal.pointsto.typestate.TypeState;
 
 import jdk.vm.ci.code.BytecodePosition;
@@ -74,7 +75,9 @@ public class NewInstanceTypeFlow extends TypeFlow<BytecodePosition> {
     @Override
     protected void onFlowEnabled(PointsToAnalysis bb) {
         super.onFlowEnabled(bb);
-        declaredType.registerAsInstantiated(source);
+        try (var ignored = CausalityExport.setCause(CausalityEvents.Ignored)) {
+            declaredType.registerAsInstantiated(source);
+        }
         if (insertDefaultFieldValues) {
             for (var f : declaredType.getInstanceFields(true)) {
                 var field = (AnalysisField) f;
