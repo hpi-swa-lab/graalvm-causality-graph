@@ -229,7 +229,6 @@ public final class CausalityEvents {
     public static final EventFactory<Class<?>> UnknownHeapObject = factory(UnknownHeapObject::new);
     public static final EventFactory<Class<?>> BuildTimeClassInitialization = factory(BuildTimeClassInitialization::new);
     public static final EventFactory<Class<?>> HeapObjectDynamicHub = factory(HeapObjectDynamicHub::new);
-    public static final EventFactory<Class<?>> HeapObjectClass = factory(HeapObjectClass::new);
     public static final EventFactory<org.graalvm.nativeimage.hosted.Feature> Feature = factory(Feature::new);
     public static final CodeEventFactory InlinedMethodCode = CausalityExport.isEnabled() ? new InterningCodeEventFactory() : new DummyCodeEventFactory();
     public static final EventFactory2<BiConsumer<DuringAnalysisAccess, Executable>, AnalysisMethod> OverrideReachableNotificationCallbackInvocation = factory(

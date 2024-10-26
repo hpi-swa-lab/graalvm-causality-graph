@@ -380,16 +380,12 @@ public abstract class ImageHeapScanner {
                 } else if (reason instanceof ArrayScan as) {
                     cause = CausalityExport.getHeapArrayAssigner(bb, as.getConstant(), as.getIndex(), constant);
                 }
-
                 if (cause == null || cause instanceof UnknownHeapObject) {
                     // Objects created by the analysis itself would add too many types as roots...
                     cause = CausalityEvents.Ignored;
                 }
-
-                CausalityEvent typeObjectInHeap = (snippetReflection.asObject(Object.class, constant) instanceof Class<?> ? CausalityEvents.HeapObjectClass : CausalityEvents.HeapObjectDynamicHub)
-                        .create(typeFromClassConstant.getJavaClass());
+                CausalityEvent typeObjectInHeap = CausalityEvents.HeapObjectDynamicHub.create(typeFromClassConstant.getJavaClass());
                 CausalityExport.registerEdge(cause, typeObjectInHeap);
-
                 try (var ignored = CausalityExport.setCause(typeObjectInHeap)) {
                     typeFromClassConstant.registerAsReachable(reason);
                 }

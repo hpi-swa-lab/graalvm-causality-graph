@@ -38,7 +38,6 @@ public enum EventKinds {
     FieldRead("Read"),
     FieldWritten("Written"),
     FieldIsRecomputed("Recomputed"),
-    HeapObjectClass("Class-Object in Heap"),
     HeapObjectDynamicHub("DynamicHub-Object in Heap"),
     UnknownHeapObject("Unknown Heap Object"),
     MethodCode("Impl"),
