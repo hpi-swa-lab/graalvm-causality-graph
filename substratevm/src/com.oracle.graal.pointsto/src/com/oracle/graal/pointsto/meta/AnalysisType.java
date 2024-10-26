@@ -682,7 +682,6 @@ public abstract class AnalysisType extends AnalysisElement implements WrappedJav
         CausalityEvent eventForRegistration = CausalityExport.getCause();
         CausalityEvent callbackEvent = CausalityEvents.ReachabilityNotificationCallback.create(callback);
         CausalityExport.registerConjunctiveEdge(eventForRegistration, CausalityEvents.TypeInstantiated.create(this), callbackEvent);
-
         if (this.isInstantiated()) {
             try (var ignored = CausalityExport.overwriteCause(callbackEvent)) {
                 /* If the type is already instantiated just trigger the callback. */

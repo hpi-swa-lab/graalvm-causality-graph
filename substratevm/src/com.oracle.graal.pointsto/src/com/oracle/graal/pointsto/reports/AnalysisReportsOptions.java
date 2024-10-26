@@ -27,6 +27,7 @@ package com.oracle.graal.pointsto.reports;
 import static com.oracle.graal.pointsto.api.PointstoOptions.TrackAccessChain;
 
 import org.graalvm.collections.EconomicMap;
+
 import jdk.graal.compiler.options.EnumOptionKey;
 import jdk.graal.compiler.options.Option;
 import jdk.graal.compiler.options.OptionKey;
@@ -74,13 +75,13 @@ public class AnalysisReportsOptions {
     @Option(help = "Suppress the expansion of specified types. See: StaticAnalysisReports.md.")//
     public static final OptionKey<String> ImageObjectTreeSuppressTypes = new OptionKey<>("");
 
-    @Option(help = "Whether a JVMTI agent should trace heap assignments in order to improve the Causality Graph")
+    @Option(help = "Whether a JVMTI agent should trace heap assignments in order to improve the Causality Graph")//
     public static final OptionKey<Boolean> HeapAssignmentTracingAgent = new OptionKey<>(null);
 
-    @Option(help = "Whether the JVMTI agent should utilize binary instrumentation")
+    @Option(help = "Whether the JVMTI agent should utilize binary instrumentation")//
     public static final OptionKey<Boolean> HeapAssignmentTracingAgentUseInstrumentation = new OptionKey<>(true);
 
-    @Option(help = "Disable this if you want to debug while the JVMTI agent is active")
+    @Option(help = "Disable this if you want to debug while the JVMTI agent is active")//
     public static final OptionKey<Boolean> HeapAssignmentTracingAgentUseBreakpoints = new OptionKey<>(true);
 
     @Option(help = "Causality Graph for Offline-Analysis of reachability.")//

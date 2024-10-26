@@ -34,7 +34,6 @@ import java.lang.ref.ReferenceQueue;
 import java.lang.ref.SoftReference;
 import java.lang.reflect.Proxy;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.Formattable;
 import java.util.List;
@@ -158,11 +157,6 @@ public class ClassInitializationSupport implements RuntimeClassInitializationSup
                         .filter(e -> e.getValue() == kind)
                         .map(Map.Entry::getKey)
                         .collect(Collectors.toSet());
-    }
-
-    public Map<Class<?>, InitKind> getClassInitKinds() {
-        assert configurationSealed;
-        return Collections.unmodifiableMap(classInitKinds);
     }
 
     /**

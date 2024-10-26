@@ -572,9 +572,7 @@ public abstract class TypeFlow<T> {
     @SuppressWarnings("try")
     public boolean addUse(PointsToAnalysis bb, TypeFlow<?> use, boolean propagateTypeState) {
         assert !bb.trackPrimitiveValues() || checkDefUseCompatibility(use) : "Incompatible flows: " + this + " connected with " + use;
-
         CausalityExport.registerTypeFlowEdge(this, use);
-
         if (isSaturated() && propagateTypeState) {
             /* Register input. */
             registerInput(bb, use);

@@ -68,9 +68,7 @@ public abstract class AnalysisField extends AnalysisElement implements WrappedJa
                     .newUpdater(AnalysisField.class, Object.class, "isUnsafeAccessed");
 
     private final int id;
-    /**
-     * Marks a field loaded from a base layer.
-     */
+    /** Marks a field loaded from a base layer. */
     private final boolean isInBaseLayer;
 
     public final ResolvedJavaField wrapped;

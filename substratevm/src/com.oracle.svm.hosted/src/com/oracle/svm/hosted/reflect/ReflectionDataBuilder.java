@@ -481,9 +481,9 @@ public class ReflectionDataBuilder extends ConditionalConfigurationRegistry impl
              */
             if (shouldRegisterReachabilityHandler) {
                 analysisAccess.registerSubtypeReachabilityHandler(
-                        (access, subType) -> universe.getBigbang()
-                                .postTask(debug -> checkSubtypeForOverridingMethods(metaAccess.lookupJavaType(subType), registeredMethods.get(declaringType).keySet())),
-                        declaringClass);
+                                (access, subType) -> universe.getBigbang()
+                                                .postTask(debug -> checkSubtypeForOverridingMethods(metaAccess.lookupJavaType(subType), registeredMethods.get(declaringType).keySet())),
+                                declaringClass);
             } else {
                 /*
                  * We need to perform the check for already reachable subtypes since the
@@ -623,10 +623,10 @@ public class ReflectionDataBuilder extends ConditionalConfigurationRegistry impl
              */
             if (shouldRegisterReachabilityHandler) {
                 analysisAccess.registerSubtypeReachabilityHandler(
-                        (access, subType) -> universe.getBigbang()
-                                .postTask(debug -> checkSubtypeForOverridingFields(metaAccess.lookupJavaType(subType),
-                                        registeredFields.get(declaringClass).keySet())),
-                        declaringClass.getJavaClass());
+                                (access, subType) -> universe.getBigbang()
+                                                .postTask(debug -> checkSubtypeForOverridingFields(metaAccess.lookupJavaType(subType),
+                                                                registeredFields.get(declaringClass).keySet())),
+                                declaringClass.getJavaClass());
             } else {
                 /*
                  * We need to perform the check for already reachable subtypes since the
@@ -648,7 +648,7 @@ public class ReflectionDataBuilder extends ConditionalConfigurationRegistry impl
          */
         if (!queriedOnly) {
             registerTypesForField(analysisField, reflectField, false);
-            }
+        }
     }
 
     @Override

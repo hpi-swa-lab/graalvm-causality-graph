@@ -71,6 +71,7 @@ public abstract class ConditionalConfigurationRegistry {
             } else {
                 beforeAnalysisAccess.registerReachabilityHandler(access -> consumer.accept(runtimeCondition), condition.getType());
             }
+
         }
 
     }

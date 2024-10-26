@@ -139,20 +139,21 @@ public abstract class ImageHeapScanner {
         try (var ignored = CausalityExport.resetCause()) {
             /* Check if the value is available before accessing it. */
             AnalysisType declaringClass = field.getDeclaringClass();
-        if (field.isStatic()) {FieldScan reason = new FieldScan(field);
-            if (field.isInBaseLayer()) {
-                /*
-                 * For base layer static fields we don't want to scan the constant value, but
-                 * instead inject its type state in the field flow. This will be propagated to any
-                 * corresponding field loads.
-                 *
-                 * GR-52421: the field state needs to be serialized from the base layer analysis
-                 */
-                if (field.getJavaKind().isObject()) {
-                    bb.injectFieldTypes(field, List.of(field.getType()), true);
+            if (field.isStatic()) {
+                FieldScan reason = new FieldScan(field);
+                if (field.isInBaseLayer()) {
+                    /*
+                     * For base layer static fields we don't want to scan the constant value, but
+                     * instead inject its type state in the field flow. This will be propagated to any
+                     * corresponding field loads.
+                     *
+                     * GR-52421: the field state needs to be serialized from the base layer analysis
+                     */
+                    if (field.getJavaKind().isObject()) {
+                        bb.injectFieldTypes(field, List.of(field.getType()), true);
+                    }
+                    return;
                 }
-                return;
-            }
                 if (isValueAvailable(field)) {
                     JavaConstant fieldValue = readStaticFieldValue(field);
                     markReachable(fieldValue, reason);
@@ -298,7 +299,6 @@ public abstract class ImageHeapScanner {
      * Create the ImageHeapConstant object wrapper, capture the hosted state of fields and arrays,
      * and install a future that can process them.
      */
-    @SuppressWarnings("try")
     protected ImageHeapConstant createImageHeapObject(JavaConstant constant, ScanReason reason) {
         assert constant.getJavaKind() == JavaKind.Object && !constant.isNull() : constant;
 
@@ -396,10 +396,10 @@ public abstract class ImageHeapScanner {
             }
             /* We are about to query the type's fields, the type must be marked as reachable. */
             var inHeap = CausalityEvents.TypeInHeap.create(type);
-        CausalityExport.registerEdgeFromHeapObject(bb, constant, reason, inHeap);
-        try (var ignored = CausalityExport.setCause(inHeap)) {
-            type.registerAsReachable(reason);
-        }
+            CausalityExport.registerEdgeFromHeapObject(bb, constant, reason, inHeap);
+            try (var ignored = CausalityExport.setCause(inHeap)) {
+                type.registerAsReachable(reason);
+            }
             ResolvedJavaField[] instanceFields = type.getInstanceFields(true);
             Object[] hostedFieldValues = new Object[instanceFields.length];
             for (ResolvedJavaField javaField : instanceFields) {

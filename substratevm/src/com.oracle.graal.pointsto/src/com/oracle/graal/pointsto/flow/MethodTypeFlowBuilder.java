@@ -241,7 +241,6 @@ public class MethodTypeFlowBuilder {
         if (analysisParsedGraph.getEncodedGraph() == null) {
             return false;
         }
-
         try (var ignored = CausalityExport.setCause(CausalityEvents.InlinedMethodCode.create(method))) {
             graph = InlineBeforeAnalysis.decodeGraph(bb, method, analysisParsedGraph);
         }
@@ -302,10 +301,11 @@ public class MethodTypeFlowBuilder {
                     NewInstanceNode node = (NewInstanceNode) n;
                     AnalysisType type = (AnalysisType) node.instanceClass();
                     if (!usePredicates) {type.registerAsInstantiated(AbstractAnalysisEngine.sourcePosition(node));
-                    for (var f : type.getInstanceFields(true)) {
-                        var field = (AnalysisField) f;
-                        field.getInitialFlow().addState(bb, TypeState.defaultValueForKind(field.getStorageKind()));
-                    }}
+                        for (var f : type.getInstanceFields(true)) {
+                            var field = (AnalysisField) f;
+                            field.getInitialFlow().addState(bb, TypeState.defaultValueForKind(field.getStorageKind()));
+                        }
+                    }
 
                 } else if (n instanceof NewInstanceWithExceptionNode) {
                     NewInstanceWithExceptionNode node = (NewInstanceWithExceptionNode) n;
@@ -316,7 +316,6 @@ public class MethodTypeFlowBuilder {
                     VirtualObjectNode node = (VirtualObjectNode) n;
                     AnalysisType type = (AnalysisType) node.type();
                     type.registerAsInstantiated(AbstractAnalysisEngine.sourcePosition(node));
-
 
                 } else if (n instanceof NewArrayNode) {
                     NewArrayNode node = (NewArrayNode) n;
@@ -367,7 +366,6 @@ public class MethodTypeFlowBuilder {
                         if (!ignoreConstant(cn)) {
                             AnalysisType type = (AnalysisType) StampTool.typeOrNull(cn, bb.getMetaAccess());
                             type.registerAsInstantiated(new EmbeddedRootScan(AbstractAnalysisEngine.sourcePosition(cn), root));
-
                             registerEmbeddedRoot(bb, cn);
                         }
                     }
@@ -382,10 +380,10 @@ public class MethodTypeFlowBuilder {
                     AnalysisMethod frameStateMethod = (AnalysisMethod) node.getMethod();
                     if (frameStateMethod != null) {
                         /*
-                         * All types referenced in (possibly inlined) frame states must be
-                         * reachable, because these classes will be reachable from stack walking
-                         * metadata. This metadata is only constructed after AOT compilation, so the
-                         * image heap scanning during static analysis does not see these classes.
+                         * All types referenced in (possibly inlined) frame states must be reachable,
+                         * because these classes will be reachable from stack walking metadata. This
+                         * metadata is only constructed after AOT compilation, so the image heap
+                         * scanning during static analysis does not see these classes.
                          */
                         frameStateMethod.getDeclaringClass().registerAsReachable(AbstractAnalysisEngine.syntheticSourcePosition(node, method));
                     }
@@ -448,7 +446,7 @@ public class MethodTypeFlowBuilder {
     /**
      * Unsafe access nodes whose offset is a {@link FieldOffsetProvider} are modeled directly as
      * field access type flows and therefore do not need unsafe registration.
-     * <p>
+     *
      * We do not want that a field is registered as unsafe accessed just so that we have the field
      * offset during debugging, so we also ignore {@link FrameState}. {@link StrengthenGraphs}
      * removes the node from the {@link FrameState} if it is not registered for unsafe access for
@@ -457,8 +455,8 @@ public class MethodTypeFlowBuilder {
     protected static boolean needsUnsafeRegistration(FieldOffsetProvider node) {
         for (var usage : node.asNode().usages()) {
             if (usage instanceof RawLoadNode || usage instanceof RawStoreNode ||
-                    usage instanceof UnsafeCompareAndSwapNode || usage instanceof UnsafeCompareAndExchangeNode ||
-                    usage instanceof AtomicReadAndWriteNode || usage instanceof AtomicReadAndAddNode) {
+                            usage instanceof UnsafeCompareAndSwapNode || usage instanceof UnsafeCompareAndExchangeNode ||
+                            usage instanceof AtomicReadAndWriteNode || usage instanceof AtomicReadAndAddNode) {
                 /* Unsafe usages are modeled as field type flows. */
             } else if (usage instanceof FrameState) {
                 /* FrameState usages are only for debugging and not necessary for correctness. */
@@ -2113,7 +2111,7 @@ public class MethodTypeFlowBuilder {
              */
             var storeBuilder = TypeFlowBuilder.create(bb, method, state.getPredicate(), node, UnsafeStoreTypeFlow.class, () -> {
                 UnsafeStoreTypeFlow storeTypeFlow = new UnsafeStoreTypeFlow(AbstractAnalysisEngine.sourcePosition(node), bb.getObjectType(), bb.getObjectType(),
-                        objectBuilder.get(), newValueBuilder.get());
+                                objectBuilder.get(), newValueBuilder.get());
                 flowsGraph.addMiscEntryFlow(storeTypeFlow);
                 return storeTypeFlow;
             });

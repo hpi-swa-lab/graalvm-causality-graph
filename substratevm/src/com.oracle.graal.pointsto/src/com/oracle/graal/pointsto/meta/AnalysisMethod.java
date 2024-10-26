@@ -112,7 +112,7 @@ public abstract class AnalysisMethod extends AnalysisElement implements WrappedJ
                     .newUpdater(AnalysisMethod.class, Object.class, "isInlined");
 
     static final AtomicReferenceFieldUpdater<AnalysisMethod, Object> allImplementationsUpdater = AtomicReferenceFieldUpdater
-            .newUpdater(AnalysisMethod.class, Object.class, "allImplementations");
+                    .newUpdater(AnalysisMethod.class, Object.class, "allImplementations");
 
     public record Signature(String name, AnalysisType[] parameterTypes) {
     }
@@ -123,9 +123,7 @@ public abstract class AnalysisMethod extends AnalysisElement implements WrappedJ
     public boolean invalidIndirectCallTarget = false;
 
     private final int id;
-    /**
-     * Marks a method loaded from a base layer.
-     */
+    /** Marks a method loaded from a base layer. */
     private final boolean isInBaseLayer;
     private final boolean analyzedInPriorLayer;
     private final boolean hasNeverInlineDirective;
@@ -183,8 +181,7 @@ public abstract class AnalysisMethod extends AnalysisElement implements WrappedJ
      * never includes the method itself to reduce the size. See
      * {@link AnalysisMethod#collectMethodImplementations} for more details.
      */
-    @SuppressWarnings("unused")
-    private volatile Object allImplementations;
+    @SuppressWarnings("unused") private volatile Object allImplementations;
 
     /**
      * Indicates that this method has opaque return. This is necessary when there are control flows
@@ -793,7 +790,7 @@ public abstract class AnalysisMethod extends AnalysisElement implements WrappedJ
      * {@code includeInlinedMethods} parameter is true, all reachable overrides are returned; if it
      * is false, only invoked methods are returned (and methods that are already inlined at all call
      * sites are excluded).
-     * <p>
+     *
      * In the parallel static analysis, it is difficult to have this information always available:
      * when a method becomes reachable or invoked, it is not known which other methods it overrides.
      * Therefore, we collect all possible implementations in {@link #allImplementations} without
@@ -807,7 +804,7 @@ public abstract class AnalysisMethod extends AnalysisElement implements WrappedJ
          * implementation of itself.
          */
         boolean includeOurselfs = (isStatic() || getDeclaringClass().isAnySubtypeInstantiated()) &&
-                (includeInlinedMethods ? isReachable() : isImplementationInvoked());
+                        (includeInlinedMethods ? isReachable() : isImplementationInvoked());
 
         int allImplementationsSize = ConcurrentLightHashSet.size(this, allImplementationsUpdater);
         if (allImplementationsSize == 0) {
@@ -1004,7 +1001,6 @@ public abstract class AnalysisMethod extends AnalysisElement implements WrappedJ
         return setGraph(expectedValue, () -> getUniverse().getImageLayerLoader().getAnalysisParsedGraph(this));
     }
 
-    @SuppressWarnings("try")
     private AnalysisParsedGraph parseGraph(BigBang bb, Object expectedValue) {
         return setGraph(expectedValue, () -> AnalysisParsedGraph.parseBytecode(bb, this));
     }
@@ -1074,17 +1070,17 @@ public abstract class AnalysisMethod extends AnalysisElement implements WrappedJ
      * static analysis.
      */
     public StructuredGraph decodeAnalyzedGraph(DebugContext debug, Iterable<EncodedNodeReference> nodeReferences, boolean trackNodeSourcePosition, boolean recordInlinedMethods,
-                                               BiFunction<Architecture, StructuredGraph, GraphDecoder> decoderProvider) {
+                    BiFunction<Architecture, StructuredGraph, GraphDecoder> decoderProvider) {
         if (analyzedGraph == null) {
             return null;
         }
 
         var allowAssumptions = getUniverse().hostVM().allowAssumptions(this);
         StructuredGraph result = new StructuredGraph.Builder(debug.getOptions(), debug, allowAssumptions)
-                .method(this)
-                .trackNodeSourcePosition(trackNodeSourcePosition)
-                .recordInlinedMethods(recordInlinedMethods)
-                .build();
+                        .method(this)
+                        .trackNodeSourcePosition(trackNodeSourcePosition)
+                        .recordInlinedMethods(recordInlinedMethods)
+                        .build();
         GraphDecoder decoder = decoderProvider.apply(AnalysisParsedGraph.HOST_ARCHITECTURE, result);
         decoder.decode(analyzedGraph, nodeReferences);
         /*

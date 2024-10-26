@@ -113,7 +113,6 @@ import com.oracle.graal.pointsto.reports.AnalysisReporter;
 import com.oracle.graal.pointsto.reports.AnalysisReportsOptions;
 import com.oracle.graal.pointsto.reports.ReportUtils;
 import com.oracle.graal.pointsto.reports.causality.CausalityExport;
-import com.oracle.graal.pointsto.reports.causality.events.CausalityEvent;
 import com.oracle.graal.pointsto.reports.causality.events.CausalityEvents;
 import com.oracle.graal.pointsto.typestate.DefaultAnalysisPolicy;
 import com.oracle.graal.pointsto.util.AnalysisError;
@@ -978,7 +977,7 @@ public class NativeImageGenerator {
                 featureHandler.registerFeatures(loader, debug);
                 AfterRegistrationAccessImpl access = new AfterRegistrationAccessImpl(featureHandler, loader, originalMetaAccess, mainEntryPoint, debug);
                 featureHandler.forEachFeature(feature -> {
-                    try (var ignored0 = CausalityExport.setCause(CausalityEvents.Feature.create(feature), CausalityExport.HeapTracing.Allocations)) {
+                    try (var ignored2 = CausalityExport.setCause(CausalityEvents.Feature.create(feature), CausalityExport.HeapTracing.Allocations)) {
                         feature.afterRegistration(access);
                     }
                 });
@@ -1086,7 +1085,7 @@ public class NativeImageGenerator {
                 try (Indent ignored2 = debug.logAndIndent("process startup initializers")) {
                     FeatureImpl.DuringSetupAccessImpl config = new FeatureImpl.DuringSetupAccessImpl(featureHandler, loader, bb, debug);
                     featureHandler.forEachFeature(feature -> {
-                        try (var ignored0 = CausalityExport.setCause(CausalityEvents.Feature.create(feature), CausalityExport.HeapTracing.Allocations)) {
+                        try (var ignored3 = CausalityExport.setCause(CausalityEvents.Feature.create(feature), CausalityExport.HeapTracing.Allocations)) {
                             feature.duringSetup(config);
                         }
                     });
@@ -1272,7 +1271,7 @@ public class NativeImageGenerator {
         Collection<StructuredGraph> snippetGraphs = replacements.getSnippetGraphs(GraalOptions.TrackNodeSourcePosition.getValue(options), options, objectTransformer);
         if (bb instanceof NativeImagePointsToAnalysis pointsToAnalysis) {
             for (StructuredGraph graph : snippetGraphs) {
-                CausalityEvent snippetRegistrationEvent = CausalityEvents.MethodSnippet.create((AnalysisMethod) graph.method());
+                var snippetRegistrationEvent = CausalityEvents.MethodSnippet.create((AnalysisMethod) graph.method());
                 CausalityExport.registerEvent(snippetRegistrationEvent);
                 CausalityExport.registerEdge(snippetRegistrationEvent, CausalityEvents.InlinedMethodCode.create((AnalysisMethod) graph.method()));
                 MethodTypeFlowBuilder.registerUsedElements(pointsToAnalysis, graph, false);

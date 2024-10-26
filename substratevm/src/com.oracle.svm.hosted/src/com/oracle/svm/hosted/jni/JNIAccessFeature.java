@@ -63,9 +63,9 @@ import com.oracle.graal.pointsto.meta.AnalysisField;
 import com.oracle.graal.pointsto.meta.AnalysisMethod;
 import com.oracle.graal.pointsto.meta.AnalysisType;
 import com.oracle.graal.pointsto.meta.AnalysisUniverse;
-import com.oracle.svm.core.SubstrateOptions;
 import com.oracle.graal.pointsto.reports.causality.CausalityExport;
 import com.oracle.graal.pointsto.reports.causality.events.CausalityEvents;
+import com.oracle.svm.core.SubstrateOptions;
 import com.oracle.svm.core.config.ObjectLayout;
 import com.oracle.svm.core.configure.ConfigurationConditionResolver;
 import com.oracle.svm.core.configure.ConfigurationFile;
@@ -439,7 +439,6 @@ public class JNIAccessFeature implements Feature {
         JNIReflectionDictionary.singleton().addNegativeClassLookupIfAbsent(className);
     }
 
-    @SuppressWarnings("try")
     private void addMethod(Executable method, DuringAnalysisAccessImpl access) {
         if (SubstitutionReflectivityFilter.shouldExclude(method, access.getMetaAccess(), access.getUniverse())) {
             return;
@@ -507,8 +506,7 @@ public class JNIAccessFeature implements Feature {
                 wrappers.forEach(wrapper -> {
                     AnalysisMethod analysisWrapper = access.getUniverse().lookup(wrapper);
                     access.getBigBang().addRootMethod(analysisWrapper, true, "Registerd in " + JNIAccessFeature.class);
-                    // ensures C calling convention
-                    analysisWrapper.registerAsEntryPoint(unpublished);
+                    analysisWrapper.registerAsEntryPoint(unpublished); // ensures C calling convention
                 });
                 return new JNIJavaCallVariantWrapperGroup(varargs, array, valist);
             }

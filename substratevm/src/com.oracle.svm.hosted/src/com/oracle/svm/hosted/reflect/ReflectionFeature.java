@@ -315,7 +315,6 @@ public class ReflectionFeature implements InternalFeature, ReflectionSubstitutio
 
         try (var ignored = CausalityExport.overwriteCause(CausalityEvents.ReflectionRegistration.create(accessor.getMember()))) {
             access.registerAsRoot((AnalysisMethod) expandSignatureMethod, true, reason);
-
             if (targetMethod != null) {
                 if (!targetMethod.isAbstract()) {
                     access.registerAsRoot((AnalysisMethod) targetMethod, true, reason);
