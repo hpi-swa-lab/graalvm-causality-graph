@@ -336,7 +336,9 @@ public abstract class ImageHeapScanner {
         /* Read hosted array element values only when the array is initialized. */
         array.constantData.hostedValuesReader = new AnalysisFuture<>(() -> {
             checkSealed(reason, "Trying to materialize an ImageHeapObjectArray for %s after the ImageHeapScanner is sealed.", constant);
-            try (var ignored = CausalityExport.setCause(CausalityEvents.Ignored)) { // TODO
+            var inHeap = CausalityEvents.TypeInHeap.create(type);
+            CausalityExport.registerEdgeFromHeapObject(bb, constant, reason, inHeap);
+            try (var ignored = CausalityExport.setCause(inHeap)) {
                 type.registerAsReachable(reason);
             }
             Object[] elementValues = new Object[length];
