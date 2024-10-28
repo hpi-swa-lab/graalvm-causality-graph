@@ -75,7 +75,7 @@ public class CausalityImplementation {
     protected void registerObjectReplacement(Object source, Object destination) {
     }
 
-    protected Causality.NonThrowingAutoCloseable setCause(Fact event, Causality.HeapTracing level, boolean overwriteSilently) {
+    protected Causality.NonThrowingAutoCloseable setCause(Fact fact, Causality.HeapTracing level, boolean overwriteSilently) {
         return null;
     }
 

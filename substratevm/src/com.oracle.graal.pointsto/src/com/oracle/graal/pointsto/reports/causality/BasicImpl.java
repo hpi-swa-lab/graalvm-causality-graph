@@ -113,7 +113,7 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
         private final Deque<CauseToken> causes = new ArrayDeque<>();
 
         public Fact topCause() {
-            return causes.isEmpty() ? null : causes.peek().event;
+            return causes.isEmpty() ? null : causes.peek().fact;
         }
 
         public CauseToken topCauseToken() {
@@ -121,19 +121,19 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
         }
 
         private void updateHeapTracing(CauseToken top) {
-            Fact cause = top == null || top.level == Causality.HeapTracing.None ? null : top.event;
+            Fact cause = top == null || top.level == Causality.HeapTracing.None ? null : top.fact;
             boolean recordHeapAssignments = top != null && top.level == Causality.HeapTracing.Full;
             HeapAssignmentTracing.getInstance().setCause(cause, recordHeapAssignments);
         }
 
         public final class CauseToken implements Causality.NonThrowingAutoCloseable {
-            private final Fact event;
+            private final Fact fact;
             private final Causality.HeapTracing level;
             public final StackTraceElement site;
             public final int stackDepth;
 
-            private CauseToken(Fact event, Causality.HeapTracing level, boolean overwriteSilently) {
-                this.event = event;
+            private CauseToken(Fact fact, Causality.HeapTracing level, boolean overwriteSilently) {
+                this.fact = fact;
                 this.level = level;
 
                 var stackTrace = new Throwable().getStackTrace();
@@ -142,8 +142,8 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
                 this.stackDepth = stackTrace.length - nSkip - 1;
 
                 if (!overwriteSilently && !causes.isEmpty()) {
-                    Fact top = causes.peek().event;
-                    if (event != null && top != null && top != event && event != Facts.Ignored && top != Facts.Ignored && !(top instanceof Feature) && !top.root()) {
+                    Fact top = causes.peek().fact;
+                    if (fact != null && top != null && top != fact && fact != Facts.Ignored && top != Facts.Ignored && !(top instanceof Feature) && !top.root()) {
                         throw new RuntimeException("Stacking Rerooting requests!");
                     }
                 }
@@ -185,7 +185,7 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
     public void registerEdge(Fact cause, Fact consequence) {
         if (cause == null || cause.root()) {
             ThreadContext.CauseToken topCauseToken = threadContexts.get().topCauseToken();
-            cause = topCauseToken == null ? null : topCauseToken.event;
+            cause = topCauseToken == null ? null : topCauseToken.fact;
             if (cause != consequence) {
                 StackTraceElement[] stackTrace = new Throwable().getStackTrace();
                 int nSkip = getSkipCount(stackTrace);
@@ -311,8 +311,8 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
     }
 
     @Override
-    protected Causality.NonThrowingAutoCloseable setCause(Fact event, Causality.HeapTracing level, boolean overwriteSilently) {
-        return threadContexts.get().new CauseToken(event, level, overwriteSilently);
+    protected Causality.NonThrowingAutoCloseable setCause(Fact fact, Causality.HeapTracing level, boolean overwriteSilently) {
+        return threadContexts.get().new CauseToken(fact, level, overwriteSilently);
     }
 
     protected void forEachEvent(Consumer<Fact> callback) {

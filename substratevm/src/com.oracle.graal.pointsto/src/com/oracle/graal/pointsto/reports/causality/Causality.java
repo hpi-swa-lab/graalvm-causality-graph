@@ -107,8 +107,8 @@ public final class Causality {
         return get().setSaturationHappening();
     }
 
-    public static void registerEvent(Fact event) {
-        registerEdge(null, event);
+    public static void registerEvent(Fact fact) {
+        registerEdge(null, fact);
     }
 
     public static void registerEdge(Fact cause, Fact consequence) {
@@ -143,25 +143,25 @@ public final class Causality {
         get().registerObjectReplacement(source, destination);
     }
 
-    public static NonThrowingAutoCloseable setCause(Fact event, HeapTracing level) {
-        return get().setCause(event, level, false);
+    public static NonThrowingAutoCloseable setCause(Fact fact, HeapTracing level) {
+        return get().setCause(fact, level, false);
     }
 
-    public static NonThrowingAutoCloseable setCause(Fact event) {
-        return setCause(event, HeapTracing.None);
+    public static NonThrowingAutoCloseable setCause(Fact fact) {
+        return setCause(fact, HeapTracing.None);
     }
 
-    public static NonThrowingAutoCloseable overwriteCause(Fact event) {
-        return get().setCause(event, HeapTracing.None, true);
+    public static NonThrowingAutoCloseable overwriteCause(Fact fact) {
+        return get().setCause(fact, HeapTracing.None, true);
     }
 
-    public static NonThrowingAutoCloseable overwriteCause(Fact event, HeapTracing level) {
-        return get().setCause(event, level, true);
+    public static NonThrowingAutoCloseable overwriteCause(Fact fact, HeapTracing level) {
+        return get().setCause(fact, level, true);
     }
 
-    public static NonThrowingAutoCloseable pushCause(Fact event) {
-        registerEvent(event);
-        return overwriteCause(event);
+    public static NonThrowingAutoCloseable pushCause(Fact fact) {
+        registerEvent(fact);
+        return overwriteCause(fact);
     }
 
     public static NonThrowingAutoCloseable resetCause() {
