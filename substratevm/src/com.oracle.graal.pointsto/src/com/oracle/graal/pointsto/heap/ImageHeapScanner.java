@@ -51,7 +51,7 @@ import com.oracle.graal.pointsto.meta.AnalysisField;
 import com.oracle.graal.pointsto.meta.AnalysisMetaAccess;
 import com.oracle.graal.pointsto.meta.AnalysisType;
 import com.oracle.graal.pointsto.meta.AnalysisUniverse;
-import com.oracle.graal.pointsto.reports.causality.CausalityExport;
+import com.oracle.graal.pointsto.reports.causality.Causality;
 import com.oracle.graal.pointsto.reports.causality.facts.Fact;
 import com.oracle.graal.pointsto.reports.causality.facts.Facts;
 import com.oracle.graal.pointsto.reports.causality.facts.UnknownHeapObject;
@@ -126,7 +126,7 @@ public abstract class ImageHeapScanner {
         if (isNonNullObjectConstant(root)) {
             EmbeddedRootScan reason = new EmbeddedRootScan(position, root);
             ImageHeapConstant value;
-            try (var ignored = CausalityExport.resetCause()) {
+            try (var ignored = Causality.resetCause()) {
                 value = getOrCreateImageHeapConstant(root, reason);
             }
             markReachable(value, reason);
@@ -136,7 +136,7 @@ public abstract class ImageHeapScanner {
     @SuppressWarnings("try")
     public void onFieldRead(AnalysisField field) {
         assert field.isRead() : field;
-        try (var ignored = CausalityExport.resetCause()) {
+        try (var ignored = Causality.resetCause()) {
             /* Check if the value is available before accessing it. */
             AnalysisType declaringClass = field.getDeclaringClass();
             if (field.isStatic()) {
@@ -337,8 +337,8 @@ public abstract class ImageHeapScanner {
         array.constantData.hostedValuesReader = new AnalysisFuture<>(() -> {
             checkSealed(reason, "Trying to materialize an ImageHeapObjectArray for %s after the ImageHeapScanner is sealed.", constant);
             var inHeap = Facts.TypeInHeap.create(type);
-            CausalityExport.registerEdgeFromHeapObject(bb, constant, reason, inHeap);
-            try (var ignored = CausalityExport.setCause(inHeap)) {
+            Causality.registerEdgeFromHeapObject(bb, constant, reason, inHeap);
+            try (var ignored = Causality.setCause(inHeap)) {
                 type.registerAsReachable(reason);
             }
             Object[] elementValues = new Object[length];
@@ -378,24 +378,24 @@ public abstract class ImageHeapScanner {
             if (typeFromClassConstant != null) {
                 Fact cause = null;
                 if (reason instanceof FieldScan fs) {
-                    cause = CausalityExport.getHeapFieldAssigner(bb, fs.getConstant(), fs.getField(), constant);
+                    cause = Causality.getHeapFieldAssigner(bb, fs.getConstant(), fs.getField(), constant);
                 } else if (reason instanceof ArrayScan as) {
-                    cause = CausalityExport.getHeapArrayAssigner(bb, as.getConstant(), as.getIndex(), constant);
+                    cause = Causality.getHeapArrayAssigner(bb, as.getConstant(), as.getIndex(), constant);
                 }
                 if (cause == null || cause instanceof UnknownHeapObject) {
                     // Objects created by the analysis itself would add too many types as roots...
                     cause = Facts.Ignored;
                 }
                 Fact typeObjectInHeap = Facts.HeapObjectDynamicHub.create(typeFromClassConstant.getJavaClass());
-                CausalityExport.registerEdge(cause, typeObjectInHeap);
-                try (var ignored = CausalityExport.setCause(typeObjectInHeap)) {
+                Causality.registerEdge(cause, typeObjectInHeap);
+                try (var ignored = Causality.setCause(typeObjectInHeap)) {
                     typeFromClassConstant.registerAsReachable(reason);
                 }
             }
             /* We are about to query the type's fields, the type must be marked as reachable. */
             var inHeap = Facts.TypeInHeap.create(type);
-            CausalityExport.registerEdgeFromHeapObject(bb, constant, reason, inHeap);
-            try (var ignored = CausalityExport.setCause(inHeap)) {
+            Causality.registerEdgeFromHeapObject(bb, constant, reason, inHeap);
+            try (var ignored = Causality.setCause(inHeap)) {
                 type.registerAsReachable(reason);
             }
             ResolvedJavaField[] instanceFields = type.getInstanceFields(true);
@@ -614,8 +614,8 @@ public abstract class ImageHeapScanner {
         if (object != null) {
             try {
                 var inHeap = Facts.TypeInHeap.create(objectType);
-                CausalityExport.registerEdgeFromHeapObject(bb, imageHeapConstant, reason, inHeap);
-                try (var ignored = CausalityExport.setCause(inHeap)) {
+                Causality.registerEdgeFromHeapObject(bb, imageHeapConstant, reason, inHeap);
+                try (var ignored = Causality.setCause(inHeap)) {
                     type.notifyObjectReachable(universe.getConcurrentAnalysisAccess(), object, reason);
                 }
             } catch (UnsupportedFeatureException e) {
@@ -627,8 +627,8 @@ public abstract class ImageHeapScanner {
         }
 
         var inHeap = Facts.TypeInHeap.create(objectType);
-        CausalityExport.registerEdgeFromHeapObject(bb, imageHeapConstant, reason, inHeap);
-        try (var ignored = CausalityExport.setCause(inHeap)) {
+        Causality.registerEdgeFromHeapObject(bb, imageHeapConstant, reason, inHeap);
+        try (var ignored = Causality.setCause(inHeap)) {
             markTypeInstantiated(objectType, reason);
         }
         if (imageHeapConstant instanceof ImageHeapObjectArray imageHeapArray) {
@@ -806,7 +806,7 @@ public abstract class ImageHeapScanner {
      */
     @SuppressWarnings("try")
     public void rescanObject(Object object) {
-        try (var ignored = CausalityExport.resetCause()) {
+        try (var ignored = Causality.resetCause()) {
             rescanObject(object, OtherReason.RESCAN);
         }
     }
@@ -903,7 +903,7 @@ public abstract class ImageHeapScanner {
      */
     @SuppressWarnings("try")
     private void maybeRunInExecutor(CompletionExecutor.DebugContextRunnable task) {
-        try (var ignored = CausalityExport.resetCause()) {
+        try (var ignored = Causality.resetCause()) {
             if (bb.executorIsStarted()) {
                 bb.postTask(task);
             } else {

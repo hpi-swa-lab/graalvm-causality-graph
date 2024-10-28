@@ -28,7 +28,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 
-import com.oracle.graal.pointsto.reports.causality.CausalityExport;
+import com.oracle.graal.pointsto.reports.causality.Causality;
 
 /** Extend FutureTask for custom error reporting. */
 public class AnalysisFuture<V> extends FutureTask<V> {
@@ -69,7 +69,7 @@ public class AnalysisFuture<V> extends FutureTask<V> {
              * when get() is invoked. We report any error eagerly as a GraalError as soon as it is
              * encountered.
              */
-            try (var ignored = CausalityExport.resetCause()) {
+            try (var ignored = Causality.resetCause()) {
                 run();
             }
             return get();

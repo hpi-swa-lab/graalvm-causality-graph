@@ -25,7 +25,7 @@
 package com.oracle.graal.pointsto.flow;
 
 import com.oracle.graal.pointsto.PointsToAnalysis;
-import com.oracle.graal.pointsto.reports.causality.CausalityExport;
+import com.oracle.graal.pointsto.reports.causality.Causality;
 import com.oracle.graal.pointsto.meta.AnalysisType;
 import com.oracle.graal.pointsto.typestate.TypeState;
 
@@ -65,7 +65,7 @@ public class ConstantTypeFlow extends TypeFlow<BytecodePosition> {
          * sensitivity is enabled the default graph is kept clean and used as a template for clones.
          */
         addState(bb, constantState);
-        CausalityExport.registerTypeFlowEdge(null, this);
+        Causality.registerTypeFlowEdge(null, this);
     }
 
     @Override

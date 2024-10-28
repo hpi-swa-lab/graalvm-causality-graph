@@ -51,7 +51,7 @@ import com.oracle.graal.pointsto.ObjectScanner;
 import com.oracle.graal.pointsto.infrastructure.UniverseMetaAccess;
 import com.oracle.graal.pointsto.meta.AnalysisMethod;
 import com.oracle.graal.pointsto.meta.AnalysisUniverse;
-import com.oracle.graal.pointsto.reports.causality.CausalityExport;
+import com.oracle.graal.pointsto.reports.causality.Causality;
 import com.oracle.graal.pointsto.reports.causality.facts.Facts;
 import com.oracle.svm.core.BuildPhaseProvider;
 import com.oracle.svm.core.ParsingReason;
@@ -155,7 +155,7 @@ public class ReflectionFeature implements InternalFeature, ReflectionSubstitutio
             throw VMError.shouldNotReachHere("New Method or Constructor found as reachable after static analysis: " + member);
         }
         return accessors.computeIfAbsent(member, m -> {
-            try (var ignored = CausalityExport.overwriteCause(Facts.ReflectionRegistration.create(m))) {
+            try (var ignored = Causality.overwriteCause(Facts.ReflectionRegistration.create(m))) {
                 return createAccessor(m);
             }
         });
@@ -313,7 +313,7 @@ public class ReflectionFeature implements InternalFeature, ReflectionSubstitutio
         ResolvedJavaMethod expandSignatureMethod = ((MethodPointer) accessor.getExpandSignature()).getMethod();
         ResolvedJavaMethod targetMethod = accessor.getTargetMethod();
 
-        try (var ignored = CausalityExport.overwriteCause(Facts.ReflectionRegistration.create(accessor.getMember()))) {
+        try (var ignored = Causality.overwriteCause(Facts.ReflectionRegistration.create(accessor.getMember()))) {
             access.registerAsRoot((AnalysisMethod) expandSignatureMethod, true, reason);
             if (targetMethod != null) {
                 if (!targetMethod.isAbstract()) {

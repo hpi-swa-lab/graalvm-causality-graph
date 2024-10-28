@@ -31,7 +31,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Stream;
 
-import com.oracle.graal.pointsto.reports.causality.CausalityExport;
+import com.oracle.graal.pointsto.reports.causality.Causality;
 import com.oracle.graal.pointsto.reports.causality.facts.Facts;
 import com.oracle.graal.pointsto.ClassInclusionPolicy;
 import com.oracle.graal.pointsto.PointsToAnalysis;
@@ -165,7 +165,7 @@ public class NativeImagePointsToAnalysis extends PointsToAnalysis implements Inf
     @Override
     @SuppressWarnings("try")
     public void initializeMetaData(AnalysisType type) {
-        try (var ignored = CausalityExport.setCause(Facts.TypeReachable.create(type), CausalityExport.HeapTracing.None)) {
+        try (var ignored = Causality.setCause(Facts.TypeReachable.create(type), Causality.HeapTracing.None)) {
             dynamicHubInitializer.initializeMetaData(universe.getHeapScanner(), type);
         }
     }

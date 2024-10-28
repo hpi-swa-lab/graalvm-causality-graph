@@ -156,7 +156,7 @@ public class SimulatedHeapTracing {
         }
     }
 
-    public static final SimulatedHeapTracing instance = CausalityExport.isEnabled() ? new Impl() : new SimulatedHeapTracing();
+    public static final SimulatedHeapTracing instance = Causality.isEnabled() ? new Impl() : new SimulatedHeapTracing();
 
     public void traceAllocation(Fact cause, ImageHeapInstance instance, AnalysisType type) {
     }

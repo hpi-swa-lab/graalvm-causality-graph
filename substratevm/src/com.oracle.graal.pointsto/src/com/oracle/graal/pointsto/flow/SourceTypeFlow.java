@@ -24,7 +24,7 @@
  */
 package com.oracle.graal.pointsto.flow;
 
-import com.oracle.graal.pointsto.reports.causality.CausalityExport;
+import com.oracle.graal.pointsto.reports.causality.Causality;
 import jdk.graal.compiler.nodes.extended.BytecodeExceptionNode;
 import jdk.graal.compiler.nodes.extended.JavaReadNode;
 
@@ -72,7 +72,7 @@ public final class SourceTypeFlow extends TypeFlow<BytecodePosition> {
     public void initFlow(PointsToAnalysis bb) {
         /* Propagate the source state when the type is marked as instantiated. */
         declaredType.registerInstantiatedCallback(a -> addState(bb, TypeState.forExactType(bb, declaredType, false)));
-        CausalityExport.registerTypeFlowEdge(declaredType.instantiatedTypes, this);
+        Causality.registerTypeFlowEdge(declaredType.instantiatedTypes, this);
     }
 
     @Override

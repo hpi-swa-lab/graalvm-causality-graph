@@ -54,7 +54,7 @@ import com.oracle.graal.pointsto.heap.TypeData;
 import com.oracle.graal.pointsto.infrastructure.OriginalClassProvider;
 import com.oracle.graal.pointsto.infrastructure.OriginalMethodProvider;
 import com.oracle.graal.pointsto.infrastructure.WrappedJavaType;
-import com.oracle.graal.pointsto.reports.causality.CausalityExport;
+import com.oracle.graal.pointsto.reports.causality.Causality;
 import com.oracle.graal.pointsto.reports.causality.facts.Fact;
 import com.oracle.graal.pointsto.reports.causality.facts.Facts;
 import com.oracle.graal.pointsto.typestate.TypeState;
@@ -555,7 +555,7 @@ public abstract class AnalysisType extends AnalysisElement implements WrappedJav
     @SuppressWarnings("try")
     public boolean registerAsInstantiated(Object reason) {
         assert isValidReason(reason) : "Registering a type as instantiated needs to provide a valid reason.";
-        try (var ignored = CausalityExport.pushCause(Facts.TypeInstantiated.create(this))) {
+        try (var ignored = Causality.pushCause(Facts.TypeInstantiated.create(this))) {
             registerAsReachable(reason);
         }
         if (AtomicUtils.atomicSet(this, reason, isInstantiatedUpdater)) {
@@ -589,10 +589,10 @@ public abstract class AnalysisType extends AnalysisElement implements WrappedJav
     @SuppressWarnings("try")
     public boolean registerAsReachable(Object reason) {
         assert isValidReason(reason) : "Registering a type as reachable needs to provide a valid reason.";
-        CausalityExport.registerEvent(Facts.TypeReachable.create(this));
+        Causality.registerEvent(Facts.TypeReachable.create(this));
         if (!AtomicUtils.isSet(this, isReachableUpdater)) {
             /* First mark all super types as reachable. */
-            try (var ignored = CausalityExport.overwriteCause(Facts.TypeReachable.create(this))) {
+            try (var ignored = Causality.overwriteCause(Facts.TypeReachable.create(this))) {
                 forAllSuperTypes(type -> type.registerAsReachable(reason), false);
             }
             /*
@@ -679,11 +679,11 @@ public abstract class AnalysisType extends AnalysisElement implements WrappedJav
 
     @SuppressWarnings("try")
     public void registerInstantiatedCallback(Consumer<DuringAnalysisAccess> callback) {
-        Fact eventForRegistration = CausalityExport.getCause();
+        Fact eventForRegistration = Causality.getCause();
         Fact callbackEvent = Facts.ReachabilityNotificationCallback.create(callback);
-        CausalityExport.registerConjunctiveEdge(eventForRegistration, Facts.TypeInstantiated.create(this), callbackEvent);
+        Causality.registerConjunctiveEdge(eventForRegistration, Facts.TypeInstantiated.create(this), callbackEvent);
         if (this.isInstantiated()) {
-            try (var ignored = CausalityExport.overwriteCause(callbackEvent)) {
+            try (var ignored = Causality.overwriteCause(callbackEvent)) {
                 /* If the type is already instantiated just trigger the callback. */
                 callback.accept(universe.getConcurrentAnalysisAccess());
             }

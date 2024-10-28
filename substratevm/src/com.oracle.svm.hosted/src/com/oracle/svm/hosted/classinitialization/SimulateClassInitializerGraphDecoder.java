@@ -61,7 +61,7 @@ import com.oracle.graal.pointsto.heap.ImageHeapInstance;
 import com.oracle.graal.pointsto.meta.AnalysisField;
 import com.oracle.graal.pointsto.meta.AnalysisType;
 import com.oracle.graal.pointsto.phases.InlineBeforeAnalysisGraphDecoder;
-import com.oracle.graal.pointsto.reports.causality.CausalityExport;
+import com.oracle.graal.pointsto.reports.causality.Causality;
 import com.oracle.graal.pointsto.reports.causality.SimulatedHeapTracing;
 import com.oracle.graal.pointsto.reports.causality.facts.Facts;
 import com.oracle.svm.core.classinitialization.EnsureClassInitializedNode;
@@ -382,7 +382,7 @@ public class SimulateClassInitializerGraphDecoder extends InlineBeforeAnalysisGr
         var aConstantReflection = (AnalysisConstantReflectionProvider) providers.getConstantReflection();
         var classInitType = (AnalysisType) node.constantTypeOrNull(aConstantReflection);
         if (classInitType != null) {
-            CausalityExport.registerEdge(
+            Causality.registerEdge(
                             Facts.BuildTimeClassInitialization.create(clusterMember.type.getJavaClass()),
                             Facts.BuildTimeClassInitialization.create(classInitType.getJavaClass()));
             if (support.trySimulateClassInitializer(graph.getDebug(), classInitType, clusterMember) && !aConstantReflection.initializationCheckRequired(classInitType)) {

@@ -39,8 +39,8 @@ import com.oracle.graal.pointsto.util.AnalysisError;
 
 import jdk.vm.ci.meta.JavaConstant;
 
-public final class CausalityExport {
-    private CausalityExport() {
+public final class Causality {
+    private Causality() {
     }
 
     public enum ActivationLevel {
@@ -53,7 +53,7 @@ public final class CausalityExport {
     private static ActivationLevel requestedLevel = ActivationLevel.DISABLED;
 
     /**
-     * Must be called before usage of {@link CausalityExport}.
+     * Must be called before usage of {@link Causality}.
      */
     public static void activate(ActivationLevel level) {
         requestedLevel = level;

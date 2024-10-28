@@ -34,7 +34,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import com.oracle.graal.pointsto.reports.causality.CausalityExport;
+import com.oracle.graal.pointsto.reports.causality.Causality;
 import com.oracle.graal.pointsto.reports.causality.facts.Facts;
 import org.graalvm.word.WordBase;
 
@@ -448,8 +448,8 @@ public class ObjectScanner {
         try {
             AnalysisType type = bb.getMetaAccess().lookupJavaType(entry.constant);
             var inHeap = Facts.TypeInHeap.create(type);
-            CausalityExport.registerEdgeFromHeapObject(bb, entry.constant, entry.reason, inHeap);
-            try (var ignored = CausalityExport.setCause(inHeap)) {
+            Causality.registerEdgeFromHeapObject(bb, entry.constant, entry.reason, inHeap);
+            try (var ignored = Causality.setCause(inHeap)) {
                 type.registerAsReachable(entry.reason);
             }
 

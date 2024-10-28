@@ -45,7 +45,7 @@ public class CausalityImplementation {
     protected void registerTypeFlowEdge(TypeFlow<?> from, TypeFlow<?> to) {
     }
 
-    protected CausalityExport.NonThrowingAutoCloseable setSaturationHappening() {
+    protected Causality.NonThrowingAutoCloseable setSaturationHappening() {
         return null;
     }
 
@@ -75,7 +75,7 @@ public class CausalityImplementation {
     protected void registerObjectReplacement(Object source, Object destination) {
     }
 
-    protected CausalityExport.NonThrowingAutoCloseable setCause(Fact event, CausalityExport.HeapTracing level, boolean overwriteSilently) {
+    protected Causality.NonThrowingAutoCloseable setCause(Fact event, Causality.HeapTracing level, boolean overwriteSilently) {
         return null;
     }
 

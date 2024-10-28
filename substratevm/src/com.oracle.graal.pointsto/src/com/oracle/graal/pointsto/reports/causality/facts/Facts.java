@@ -42,7 +42,7 @@ import org.graalvm.collections.Pair;
 import com.oracle.graal.pointsto.meta.AnalysisField;
 import com.oracle.graal.pointsto.meta.AnalysisMethod;
 import com.oracle.graal.pointsto.meta.AnalysisType;
-import com.oracle.graal.pointsto.reports.causality.CausalityExport;
+import com.oracle.graal.pointsto.reports.causality.Causality;
 import com.oracle.svm.util.LogUtils;
 
 import jdk.vm.ci.code.BytecodeFrame;
@@ -192,7 +192,7 @@ public final class Facts {
     }
 
     private static <T> EventFactory<T> factory(Function<T, Fact> constructor) {
-        if (CausalityExport.isEnabled()) {
+        if (Causality.isEnabled()) {
             return new InterningEventFactory<>(constructor);
         } else {
             return new DummyEventFactory<>();
@@ -200,7 +200,7 @@ public final class Facts {
     }
 
     private static <T1, T2> EventFactory2<T1, T2> factory(BiFunction<T1, T2, Fact> constructor) {
-        if (CausalityExport.isEnabled()) {
+        if (Causality.isEnabled()) {
             return new InterningEventFactory2<>(constructor);
         } else {
             return new DummyEventFactory2<>();
@@ -230,12 +230,12 @@ public final class Facts {
     public static final EventFactory<Class<?>> BuildTimeClassInitialization = factory(BuildTimeClassInitialization::new);
     public static final EventFactory<Class<?>> HeapObjectDynamicHub = factory(HeapObjectDynamicHub::new);
     public static final EventFactory<org.graalvm.nativeimage.hosted.Feature> Feature = factory(Feature::new);
-    public static final CodeEventFactory InlinedMethodCode = CausalityExport.isEnabled() ? new InterningCodeEventFactory() : new DummyCodeEventFactory();
+    public static final CodeEventFactory InlinedMethodCode = Causality.isEnabled() ? new InterningCodeEventFactory() : new DummyCodeEventFactory();
     public static final EventFactory2<BiConsumer<DuringAnalysisAccess, Executable>, AnalysisMethod> OverrideReachableNotificationCallbackInvocation = factory(
                     OverrideReachableNotificationCallbackInvocation::new);
     public static final EventFactory2<BiConsumer<DuringAnalysisAccess, Class<?>>, AnalysisType> SubtypeReachableNotificationCallbackInvocation = factory(
                     SubtypeReachableNotificationCallbackInvocation::new);
-    public static final JniCallVariantWrapperEventFactory JniCallVariantWrapper = CausalityExport.isEnabled() ? new InterningJniCallVariantWrapperEventFactory()
+    public static final JniCallVariantWrapperEventFactory JniCallVariantWrapper = Causality.isEnabled() ? new InterningJniCallVariantWrapperEventFactory()
                     : new DummyJniCallVariantWrapperEventFactory();
     public static final EventFactory<AnnotatedElement> JNIRegistration = factory(JNIRegistration::new);
     public static final EventFactory<AnnotatedElement> ReflectionRegistration = factory(ReflectionRegistration::new);

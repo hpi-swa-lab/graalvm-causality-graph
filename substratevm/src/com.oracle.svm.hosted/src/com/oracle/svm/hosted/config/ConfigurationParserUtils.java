@@ -42,7 +42,7 @@ import java.util.function.Consumer;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
-import com.oracle.graal.pointsto.reports.causality.CausalityExport;
+import com.oracle.graal.pointsto.reports.causality.Causality;
 import com.oracle.graal.pointsto.reports.causality.facts.Facts;
 import org.graalvm.nativeimage.impl.ConfigurationCondition;
 import org.graalvm.nativeimage.impl.ReflectionRegistry;
@@ -146,7 +146,7 @@ public final class ConfigurationParserUtils {
             } else {
                 uri = ((URL) location).toURI();
             }
-            try (var ignored = CausalityExport.setCause(Facts.ConfigurationFile.create(uri))) {
+            try (var ignored = Causality.setCause(Facts.ConfigurationFile.create(uri))) {
                 parser.parseAndRegister(uri);
             }
         } catch (IOException | URISyntaxException | JsonParserException e) {

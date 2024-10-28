@@ -37,7 +37,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import com.oracle.graal.pointsto.reports.causality.CausalityExport;
+import com.oracle.graal.pointsto.reports.causality.Causality;
 import com.oracle.graal.pointsto.reports.causality.facts.Facts;
 import org.graalvm.nativeimage.ImageSingletons;
 import org.graalvm.nativeimage.hosted.Feature;
@@ -181,7 +181,7 @@ public class FeatureHandler {
         Function<Class<?>, Class<?>> specificClassProvider = specificAutomaticFeatures::get;
 
         for (Class<?> featureClass : automaticFeatures) {
-            try (var ignored = CausalityExport.setCause(Facts.AutomaticFeatureRegistration)) {
+            try (var ignored = Causality.setCause(Facts.AutomaticFeatureRegistration)) {
                 registerFeature(featureClass, specificClassProvider, access);
             }
         }
@@ -193,7 +193,7 @@ public class FeatureHandler {
             } catch (ClassNotFoundException e) {
                 throw UserError.abort("Feature %s class not found on the classpath. Ensure that the name is correct and that the class is on the classpath.", featureName);
             }
-            try (var ignored = CausalityExport.setCause(Facts.UserEnabledFeatureRegistration)) {
+            try (var ignored = Causality.setCause(Facts.UserEnabledFeatureRegistration)) {
                 registerFeature(featureClass, specificClassProvider, access);
             }
         }
@@ -218,7 +218,7 @@ public class FeatureHandler {
 
         if (registeredFeatures.contains(baseFeatureClass)) {
             if (ImageSingletons.contains(baseFeatureClass)) {
-                CausalityExport.registerEvent(Facts.Feature.create(ImageSingletons.lookup((Class<Feature>) baseFeatureClass)));
+                Causality.registerEvent(Facts.Feature.create(ImageSingletons.lookup((Class<Feature>) baseFeatureClass)));
             }
             return;
         }
@@ -262,12 +262,12 @@ public class FeatureHandler {
             throw handleFeatureError(feature, t);
         }
         for (Class<? extends Feature> requiredFeatureClass : requiredFeatures) {
-            try (var ignored = CausalityExport.overwriteCause(Facts.Feature.create(feature))) {
+            try (var ignored = Causality.overwriteCause(Facts.Feature.create(feature))) {
                 registerFeature(requiredFeatureClass, specificClassProvider, access);
             }
         }
 
-        CausalityExport.registerEvent(Facts.Feature.create(feature));
+        Causality.registerEvent(Facts.Feature.create(feature));
         featureInstances.add(feature);
     }
 

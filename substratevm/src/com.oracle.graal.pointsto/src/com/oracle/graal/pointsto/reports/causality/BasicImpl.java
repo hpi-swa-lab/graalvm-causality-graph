@@ -121,18 +121,18 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
         }
 
         private void updateHeapTracing(CauseToken top) {
-            Fact cause = top == null || top.level == CausalityExport.HeapTracing.None ? null : top.event;
-            boolean recordHeapAssignments = top != null && top.level == CausalityExport.HeapTracing.Full;
+            Fact cause = top == null || top.level == Causality.HeapTracing.None ? null : top.event;
+            boolean recordHeapAssignments = top != null && top.level == Causality.HeapTracing.Full;
             HeapAssignmentTracing.getInstance().setCause(cause, recordHeapAssignments);
         }
 
-        public final class CauseToken implements CausalityExport.NonThrowingAutoCloseable {
+        public final class CauseToken implements Causality.NonThrowingAutoCloseable {
             private final Fact event;
-            private final CausalityExport.HeapTracing level;
+            private final Causality.HeapTracing level;
             public final StackTraceElement site;
             public final int stackDepth;
 
-            private CauseToken(Fact event, CausalityExport.HeapTracing level, boolean overwriteSilently) {
+            private CauseToken(Fact event, Causality.HeapTracing level, boolean overwriteSilently) {
                 this.event = event;
                 this.level = level;
 
@@ -311,7 +311,7 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
     }
 
     @Override
-    protected CausalityExport.NonThrowingAutoCloseable setCause(Fact event, CausalityExport.HeapTracing level, boolean overwriteSilently) {
+    protected Causality.NonThrowingAutoCloseable setCause(Fact event, Causality.HeapTracing level, boolean overwriteSilently) {
         return threadContexts.get().new CauseToken(event, level, overwriteSilently);
     }
 

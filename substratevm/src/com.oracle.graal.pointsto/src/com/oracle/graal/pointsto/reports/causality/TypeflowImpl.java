@@ -68,7 +68,7 @@ final class TypeflowImpl extends BasicImpl<TypeflowImpl.ThreadContext> {
     public static final class ThreadContext extends BasicImpl.ThreadContext {
         public int currentlySaturatingDepth; // Inhibits the registration of new typeflow edges
 
-        public final class SaturationHappeningToken implements CausalityExport.NonThrowingAutoCloseable {
+        public final class SaturationHappeningToken implements Causality.NonThrowingAutoCloseable {
             SaturationHappeningToken() {
                 currentlySaturatingDepth++;
             }
@@ -103,7 +103,7 @@ final class TypeflowImpl extends BasicImpl<TypeflowImpl.ThreadContext> {
     }
 
     @Override
-    public CausalityExport.NonThrowingAutoCloseable setSaturationHappening() {
+    public Causality.NonThrowingAutoCloseable setSaturationHappening() {
         return getContext().new SaturationHappeningToken();
     }
 

@@ -38,7 +38,7 @@ import com.oracle.graal.pointsto.PointsToAnalysis;
 import com.oracle.graal.pointsto.meta.AnalysisMethod;
 import com.oracle.graal.pointsto.meta.AnalysisUniverse;
 import com.oracle.graal.pointsto.reports.AnalysisReportsOptions;
-import com.oracle.graal.pointsto.reports.causality.CausalityExport;
+import com.oracle.graal.pointsto.reports.causality.Causality;
 import com.oracle.graal.pointsto.reports.causality.ReachabilityExport;
 import com.oracle.svm.core.BuildArtifacts;
 import com.oracle.svm.core.ClassLoaderSupport;
@@ -96,7 +96,7 @@ public class CausalityExporter implements InternalFeature {
         try {
             try {
                 zip = new ZipOutputStream(new FileOutputStream(targetPath.toFile()));
-                CausalityExport.dump((PointsToAnalysis) accessImpl.bb, zip, hierarchy, AnalysisReportsOptions.CausalityGraphVerbose.getValue(HostedOptionValues.singleton()));
+                Causality.dump((PointsToAnalysis) accessImpl.bb, zip, hierarchy, AnalysisReportsOptions.CausalityGraphVerbose.getValue(HostedOptionValues.singleton()));
             } catch (IOException ex) {
                 if (zip != null) {
                     zip.close();

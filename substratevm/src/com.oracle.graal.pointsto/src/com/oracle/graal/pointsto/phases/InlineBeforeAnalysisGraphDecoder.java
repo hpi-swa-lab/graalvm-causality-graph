@@ -30,7 +30,7 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.concurrent.ConcurrentHashMap;
 
-import com.oracle.graal.pointsto.reports.causality.CausalityExport;
+import com.oracle.graal.pointsto.reports.causality.Causality;
 import com.oracle.graal.pointsto.reports.causality.facts.Facts;
 import jdk.vm.ci.code.BytecodePosition;
 import org.graalvm.collections.EconomicSet;
@@ -366,8 +366,8 @@ public class InlineBeforeAnalysisGraphDecoder extends PEGraphDecoder {
         var inlineScopeEvent = Facts.InlinedMethodCode.create(
                         new BytecodePosition(inlineScope.getCallerNodeSourcePosition(),
                                         invokeData.callTarget.targetMethod(), jdk.vm.ci.code.BytecodeFrame.UNKNOWN_BCI)); // createEventForInlinedMethodCode(inlineScope);
-        CausalityExport.registerEdge(callerScopeEvent, inlineScopeEvent);
-        try (var ignored = CausalityExport.overwriteCause(callerScopeEvent)) {
+        Causality.registerEdge(callerScopeEvent, inlineScopeEvent);
+        try (var ignored = Causality.overwriteCause(callerScopeEvent)) {
             ((AnalysisMethod) invokeData.callTarget.targetMethod()).registerAsInlined(reason);
         }
 
