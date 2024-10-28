@@ -48,7 +48,7 @@ import java.util.function.BiPredicate;
 import java.util.function.Function;
 
 import com.oracle.graal.pointsto.reports.causality.CausalityExport;
-import com.oracle.graal.pointsto.reports.causality.events.CausalityEvents;
+import com.oracle.graal.pointsto.reports.causality.facts.Facts;
 import org.graalvm.nativeimage.AnnotationAccess;
 import org.graalvm.nativeimage.ImageSingletons;
 import org.graalvm.nativeimage.Platform;
@@ -513,7 +513,7 @@ public class SVMHost extends HostVM {
          */
         boolean isProxyClass = Proxy.isProxyClass(javaClass);
 
-        try (var ignored = CausalityExport.overwriteCause(CausalityEvents.TypeReachable.create(type), CausalityExport.HeapTracing.Full)) {
+        try (var ignored = CausalityExport.overwriteCause(Facts.TypeReachable.create(type), CausalityExport.HeapTracing.Full)) {
             return new DynamicHub(javaClass, className, computeHubType(type), computeReferenceType(type), superHub, componentHub, sourceFileName, modifiers, hubClassLoader,
                             isHidden, isRecord, nestHost, assertionStatus, type.hasDefaultMethods(), type.declaresDefaultMethods(), isSealed, isVMInternal, isLambdaFormHidden, isLinked, simpleBinaryName,
                             getDeclaringClass(javaClass), getSignature(javaClass), isProxyClass, layerId);

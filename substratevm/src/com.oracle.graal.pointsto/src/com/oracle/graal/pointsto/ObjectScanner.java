@@ -35,7 +35,7 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import com.oracle.graal.pointsto.reports.causality.CausalityExport;
-import com.oracle.graal.pointsto.reports.causality.events.CausalityEvents;
+import com.oracle.graal.pointsto.reports.causality.facts.Facts;
 import org.graalvm.word.WordBase;
 
 import com.oracle.graal.pointsto.constraints.UnsupportedFeatureException;
@@ -447,7 +447,7 @@ public class ObjectScanner {
     private void doScan(WorklistEntry entry) {
         try {
             AnalysisType type = bb.getMetaAccess().lookupJavaType(entry.constant);
-            var inHeap = CausalityEvents.TypeInHeap.create(type);
+            var inHeap = Facts.TypeInHeap.create(type);
             CausalityExport.registerEdgeFromHeapObject(bb, entry.constant, entry.reason, inHeap);
             try (var ignored = CausalityExport.setCause(inHeap)) {
                 type.registerAsReachable(entry.reason);

@@ -65,7 +65,7 @@ import com.oracle.graal.pointsto.meta.PointsToAnalysisField;
 import com.oracle.graal.pointsto.meta.PointsToAnalysisMethod;
 import com.oracle.graal.pointsto.reports.StatisticsPrinter;
 import com.oracle.graal.pointsto.reports.causality.CausalityExport;
-import com.oracle.graal.pointsto.reports.causality.events.CausalityEvents;
+import com.oracle.graal.pointsto.reports.causality.facts.Facts;
 import com.oracle.graal.pointsto.typestate.AnyPrimitiveTypeState;
 import com.oracle.graal.pointsto.typestate.PointsToStats;
 import com.oracle.graal.pointsto.typestate.TypeState;
@@ -344,7 +344,7 @@ public abstract class PointsToAnalysis extends AbstractAnalysisEngine {
         int paramCount = aMethod.getSignature().getParameterCount(!isStatic);
         PointsToAnalysisMethod originalPTAMethod = assertPointsToAnalysisMethod(aMethod);
 
-        CausalityExport.registerEvent(CausalityEvents.RootMethodRegistration.create(aMethod));
+        CausalityExport.registerEvent(Facts.RootMethodRegistration.create(aMethod));
         if (isStatic) {
             /*
              * For static methods trigger analysis in the empty context. This will trigger parsing
@@ -352,7 +352,7 @@ public abstract class PointsToAnalysis extends AbstractAnalysisEngine {
              * initialized with the corresponding parameter declared type.
              */
             Consumer<PointsToAnalysisMethod> triggerStaticMethodFlow = (pointsToMethod) -> {
-                CausalityExport.registerEvent(CausalityEvents.MethodImplementationInvoked.create(pointsToMethod));
+                CausalityExport.registerEvent(Facts.MethodImplementationInvoked.create(pointsToMethod));
                 postTask(() -> {
                     pointsToMethod.registerAsDirectRootMethod(reason);
                     pointsToMethod.registerAsImplementationInvoked(reason.toString());
@@ -396,7 +396,7 @@ public abstract class PointsToAnalysis extends AbstractAnalysisEngine {
              * will be done during callee resolution.
              */
             if (invokeSpecial) {
-                CausalityExport.registerEvent(CausalityEvents.MethodReachable.create(originalPTAMethod));
+                CausalityExport.registerEvent(Facts.MethodReachable.create(originalPTAMethod));
             }
             postTask(() -> {
                 if (invokeSpecial) {

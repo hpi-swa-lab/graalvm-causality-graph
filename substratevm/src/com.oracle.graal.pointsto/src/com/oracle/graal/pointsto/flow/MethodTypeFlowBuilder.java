@@ -58,8 +58,8 @@ import com.oracle.graal.pointsto.meta.HostedProviders;
 import com.oracle.graal.pointsto.meta.PointsToAnalysisMethod;
 import com.oracle.graal.pointsto.phases.InlineBeforeAnalysis;
 import com.oracle.graal.pointsto.reports.causality.CausalityExport;
-import com.oracle.graal.pointsto.reports.causality.events.CausalityEvent;
-import com.oracle.graal.pointsto.reports.causality.events.CausalityEvents;
+import com.oracle.graal.pointsto.reports.causality.facts.Fact;
+import com.oracle.graal.pointsto.reports.causality.facts.Facts;
 import com.oracle.graal.pointsto.results.StrengthenGraphs;
 import com.oracle.graal.pointsto.typestate.TypeState;
 import com.oracle.graal.pointsto.util.AnalysisError;
@@ -233,7 +233,7 @@ public class MethodTypeFlowBuilder {
         AnalysisParsedGraph analysisParsedGraph = forceReparse ? method.reparseGraph(bb) : method.ensureGraphParsed(bb);
 
         if (analysisParsedGraph.isIntrinsic()) {
-            try (var ignored = CausalityExport.setCause(CausalityEvents.Ignored)) {
+            try (var ignored = CausalityExport.setCause(Facts.Ignored)) {
                 method.registerAsIntrinsicMethod(reason);
             }
         }
@@ -241,7 +241,7 @@ public class MethodTypeFlowBuilder {
         if (analysisParsedGraph.getEncodedGraph() == null) {
             return false;
         }
-        try (var ignored = CausalityExport.setCause(CausalityEvents.InlinedMethodCode.create(method))) {
+        try (var ignored = CausalityExport.setCause(Facts.InlinedMethodCode.create(method))) {
             graph = InlineBeforeAnalysis.decodeGraph(bb, method, analysisParsedGraph);
         }
 
@@ -289,7 +289,7 @@ public class MethodTypeFlowBuilder {
         HostedProviders providers = bb.getProviders(method);
         for (Node n : graph.getNodes()) {
             BytecodePosition reason = n instanceof ValueNode vn ? AbstractAnalysisEngine.sourcePosition(vn) : AbstractAnalysisEngine.syntheticSourcePosition(n, method);
-            try (var ignored = CausalityExport.setCause(CausalityEvents.InlinedMethodCode.create(reason))) {
+            try (var ignored = CausalityExport.setCause(Facts.InlinedMethodCode.create(reason))) {
                 if (n instanceof InstanceOfNode) {
                     InstanceOfNode node = (InstanceOfNode) n;
                     AnalysisType type = (AnalysisType) node.type().getType();
@@ -665,7 +665,7 @@ public class MethodTypeFlowBuilder {
             }
         }
 
-        try (var ignored = CausalityExport.setCause(CausalityEvents.InlinedMethodCode.create((AnalysisMethod) graph.method()))) { // TODO: Look how we handled this in other parts of the MethodTypeFlowBuilder
+        try (var ignored = CausalityExport.setCause(Facts.InlinedMethodCode.create((AnalysisMethod) graph.method()))) { // TODO: Look how we handled this in other parts of the MethodTypeFlowBuilder
             // Propagate the type flows through the method's graph
             new NodeIterator(graph.start(), typeFlows).apply();
         }
@@ -1832,14 +1832,14 @@ public class MethodTypeFlowBuilder {
             if (createDeoptInvokeTypeFlow) {
                 invokeFlow = bb.analysisPolicy().createDeoptInvokeTypeFlow(invokeLocation, receiverType, targetMethod, actualParameters, actualReturn, multiMethodKey);
             } else {
-                CausalityEvent logicalCallerEvent = CausalityEvents.InlinedMethodCode.create(invoke.getNodeSourcePosition());
+                Fact logicalCallerEvent = Facts.InlinedMethodCode.create(invoke.getNodeSourcePosition());
                 switch (invokeKind) {
                     case Static:
-                        CausalityExport.registerEdge(logicalCallerEvent, CausalityEvents.MethodImplementationInvoked.create(targetMethod));
+                        CausalityExport.registerEdge(logicalCallerEvent, Facts.MethodImplementationInvoked.create(targetMethod));
                         invokeFlow = bb.analysisPolicy().createStaticInvokeTypeFlow(invokeLocation, receiverType, targetMethod, actualParameters, actualReturn, multiMethodKey);
                         break;
                     case Special:
-                        CausalityExport.registerEdge(logicalCallerEvent, CausalityEvents.MethodImplementationInvoked.create(targetMethod));
+                        CausalityExport.registerEdge(logicalCallerEvent, Facts.MethodImplementationInvoked.create(targetMethod));
                         invokeFlow = bb.analysisPolicy().createSpecialInvokeTypeFlow(invokeLocation, receiverType, targetMethod, actualParameters, actualReturn, multiMethodKey);
                         break;
                     case Virtual:

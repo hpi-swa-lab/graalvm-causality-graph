@@ -34,7 +34,7 @@ import com.oracle.graal.pointsto.flow.TypeFlow;
 import com.oracle.graal.pointsto.meta.AnalysisField;
 import com.oracle.graal.pointsto.meta.AnalysisMethod;
 import com.oracle.graal.pointsto.meta.AnalysisType;
-import com.oracle.graal.pointsto.reports.causality.events.CausalityEvent;
+import com.oracle.graal.pointsto.reports.causality.facts.Fact;
 import com.oracle.graal.pointsto.util.AnalysisError;
 
 import jdk.vm.ci.meta.JavaConstant;
@@ -107,35 +107,35 @@ public final class CausalityExport {
         return get().setSaturationHappening();
     }
 
-    public static void registerEvent(CausalityEvent event) {
+    public static void registerEvent(Fact event) {
         registerEdge(null, event);
     }
 
-    public static void registerEdge(CausalityEvent cause, CausalityEvent consequence) {
+    public static void registerEdge(Fact cause, Fact consequence) {
         get().registerEdge(cause, consequence);
     }
 
-    public static void registerConjunctiveEdge(CausalityEvent cause1, CausalityEvent cause2, CausalityEvent consequence) {
+    public static void registerConjunctiveEdge(Fact cause1, Fact cause2, Fact consequence) {
         get().registerConjunctiveEdge(cause1, cause2, consequence);
     }
 
-    public static void registerEdgeFromHeapObject(BigBang bb, JavaConstant heapObject, ObjectScanner.ScanReason reason, CausalityEvent consequence) {
+    public static void registerEdgeFromHeapObject(BigBang bb, JavaConstant heapObject, ObjectScanner.ScanReason reason, Fact consequence) {
         get().registerEdgeFromHeapObject(bb, heapObject, reason, consequence);
     }
 
-    public static void registerEdgeFromHeapObject(Object heapObject, ObjectScanner.ScanReason reason, CausalityEvent consequence) {
+    public static void registerEdgeFromHeapObject(Object heapObject, ObjectScanner.ScanReason reason, Fact consequence) {
         get().registerEdgeFromHeapObject(heapObject, reason, consequence);
     }
 
-    public static CausalityEvent getHeapFieldAssigner(BigBang analysis, JavaConstant receiver, AnalysisField field, JavaConstant value) {
+    public static Fact getHeapFieldAssigner(BigBang analysis, JavaConstant receiver, AnalysisField field, JavaConstant value) {
         return get().getHeapFieldAssigner(analysis, receiver, field, value);
     }
 
-    public static CausalityEvent getHeapArrayAssigner(BigBang analysis, JavaConstant array, int elementIndex, JavaConstant value) {
+    public static Fact getHeapArrayAssigner(BigBang analysis, JavaConstant array, int elementIndex, JavaConstant value) {
         return get().getHeapArrayAssigner(analysis, array, elementIndex, value);
     }
 
-    public static void registerTypeEntering(PointsToAnalysis bb, CausalityEvent cause, TypeFlow<?> destination, AnalysisType type) {
+    public static void registerTypeEntering(PointsToAnalysis bb, Fact cause, TypeFlow<?> destination, AnalysisType type) {
         get().registerTypeEntering(bb, cause, destination, type);
     }
 
@@ -143,23 +143,23 @@ public final class CausalityExport {
         get().registerObjectReplacement(source, destination);
     }
 
-    public static NonThrowingAutoCloseable setCause(CausalityEvent event, HeapTracing level) {
+    public static NonThrowingAutoCloseable setCause(Fact event, HeapTracing level) {
         return get().setCause(event, level, false);
     }
 
-    public static NonThrowingAutoCloseable setCause(CausalityEvent event) {
+    public static NonThrowingAutoCloseable setCause(Fact event) {
         return setCause(event, HeapTracing.None);
     }
 
-    public static NonThrowingAutoCloseable overwriteCause(CausalityEvent event) {
+    public static NonThrowingAutoCloseable overwriteCause(Fact event) {
         return get().setCause(event, HeapTracing.None, true);
     }
 
-    public static NonThrowingAutoCloseable overwriteCause(CausalityEvent event, HeapTracing level) {
+    public static NonThrowingAutoCloseable overwriteCause(Fact event, HeapTracing level) {
         return get().setCause(event, level, true);
     }
 
-    public static NonThrowingAutoCloseable pushCause(CausalityEvent event) {
+    public static NonThrowingAutoCloseable pushCause(Fact event) {
         registerEvent(event);
         return overwriteCause(event);
     }
@@ -168,7 +168,7 @@ public final class CausalityExport {
         return overwriteCause(null);
     }
 
-    public static CausalityEvent getCause() {
+    public static Fact getCause() {
         return get().getCause();
     }
 

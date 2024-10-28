@@ -65,7 +65,7 @@ import com.oracle.graal.pointsto.meta.AnalysisType;
 import com.oracle.graal.pointsto.meta.AnalysisUniverse;
 import com.oracle.graal.pointsto.meta.ObjectReachableCallback;
 import com.oracle.graal.pointsto.reports.causality.CausalityExport;
-import com.oracle.graal.pointsto.reports.causality.events.CausalityEvents;
+import com.oracle.graal.pointsto.reports.causality.facts.Facts;
 import com.oracle.svm.common.meta.MultiMethod;
 import com.oracle.svm.core.LinkerInvocation;
 import com.oracle.svm.core.SubstrateOptions;
@@ -286,7 +286,7 @@ public class FeatureImpl {
             } catch (ClassNotFoundException e) {
                 throw VMError.shouldNotReachHere(e);
             }
-            CausalityExport.registerEvent(CausalityEvents.BuildTimeClassInitialization.create(clazz));
+            CausalityExport.registerEvent(Facts.BuildTimeClassInitialization.create(clazz));
         }
     }
 

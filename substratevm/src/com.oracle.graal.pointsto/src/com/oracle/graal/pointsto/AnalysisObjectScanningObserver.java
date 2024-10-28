@@ -26,7 +26,7 @@ package com.oracle.graal.pointsto;
 
 import com.oracle.graal.pointsto.ObjectScanner.ScanReason;
 import com.oracle.graal.pointsto.reports.causality.CausalityExport;
-import com.oracle.graal.pointsto.reports.causality.events.CausalityEvents;
+import com.oracle.graal.pointsto.reports.causality.facts.Facts;
 import com.oracle.graal.pointsto.flow.ArrayElementsTypeFlow;
 import com.oracle.graal.pointsto.flow.FieldTypeFlow;
 import com.oracle.graal.pointsto.flow.context.object.AnalysisObject;
@@ -144,7 +144,7 @@ public class AnalysisObjectScanningObserver implements ObjectScanningObserver {
         Object valueObj = analysis.getSnippetReflectionProvider().asObject(Object.class, value);
         AnalysisType type = bb.getMetaAccess().lookupJavaType(valueObj.getClass());
 
-        var inHeap = CausalityEvents.TypeInHeap.create(type);
+        var inHeap = Facts.TypeInHeap.create(type);
         CausalityExport.registerEdgeFromHeapObject(analysis, value, reason, inHeap);
         try (var ignored = CausalityExport.setCause(inHeap)) {
             type.registerAsInstantiated(reason);

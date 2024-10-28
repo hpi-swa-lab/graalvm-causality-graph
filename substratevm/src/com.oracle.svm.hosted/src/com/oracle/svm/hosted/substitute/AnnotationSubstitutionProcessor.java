@@ -58,7 +58,7 @@ import com.oracle.graal.pointsto.BigBang;
 import com.oracle.graal.pointsto.infrastructure.SubstitutionProcessor;
 import com.oracle.graal.pointsto.meta.AnalysisField;
 import com.oracle.graal.pointsto.reports.causality.CausalityExport;
-import com.oracle.graal.pointsto.reports.causality.events.CausalityEvents;
+import com.oracle.graal.pointsto.reports.causality.facts.Facts;
 import com.oracle.svm.core.SubstrateOptions;
 import com.oracle.svm.core.SubstrateUtil;
 import com.oracle.svm.core.Uninterruptible;
@@ -296,8 +296,8 @@ public class AnnotationSubstitutionProcessor extends SubstitutionProcessor {
         for (var entry : unsafeAccessedFields.entrySet()) {
             AnalysisField targetField = bb.getMetaAccess().lookupJavaField(entry.getKey());
             assert !AnnotationAccess.isAnnotationPresent(targetField, Delete.class);
-            CausalityExport.registerEdge(CausalityEvents.StructualProperty, CausalityEvents.FieldIsRecomputed.create(targetField));
-            try (var ignored = CausalityExport.setCause(CausalityEvents.FieldIsRecomputed.create(targetField))) {
+            CausalityExport.registerEdge(Facts.StructualProperty, Facts.FieldIsRecomputed.create(targetField));
+            try (var ignored = CausalityExport.setCause(Facts.FieldIsRecomputed.create(targetField))) {
                 targetField.registerAsUnsafeAccessed(entry.getValue());
             }
         }

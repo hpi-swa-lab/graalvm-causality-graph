@@ -34,7 +34,7 @@ import com.oracle.graal.pointsto.flow.context.object.AnalysisObject;
 import com.oracle.graal.pointsto.meta.AnalysisField;
 import com.oracle.graal.pointsto.meta.AnalysisType;
 import com.oracle.graal.pointsto.reports.causality.CausalityExport;
-import com.oracle.graal.pointsto.reports.causality.events.CausalityEvents;
+import com.oracle.graal.pointsto.reports.causality.facts.Facts;
 import com.oracle.graal.pointsto.typestate.TypeState;
 
 import jdk.vm.ci.code.BytecodePosition;
@@ -75,7 +75,7 @@ public class NewInstanceTypeFlow extends TypeFlow<BytecodePosition> {
     @Override
     protected void onFlowEnabled(PointsToAnalysis bb) {
         super.onFlowEnabled(bb);
-        try (var ignored = CausalityExport.setCause(CausalityEvents.Ignored)) {
+        try (var ignored = CausalityExport.setCause(Facts.Ignored)) {
             declaredType.registerAsInstantiated(source);
         }
         if (insertDefaultFieldValues) {
