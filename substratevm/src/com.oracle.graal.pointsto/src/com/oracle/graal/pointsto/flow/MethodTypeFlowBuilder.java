@@ -1832,14 +1832,14 @@ public class MethodTypeFlowBuilder {
             if (createDeoptInvokeTypeFlow) {
                 invokeFlow = bb.analysisPolicy().createDeoptInvokeTypeFlow(invokeLocation, receiverType, targetMethod, actualParameters, actualReturn, multiMethodKey);
             } else {
-                Fact logicalCallerEvent = Facts.InlinedMethodCode.create(invoke.getNodeSourcePosition());
+                Fact logicalCallerFact = Facts.InlinedMethodCode.create(invoke.getNodeSourcePosition());
                 switch (invokeKind) {
                     case Static:
-                        Causality.registerEdge(logicalCallerEvent, Facts.MethodImplementationInvoked.create(targetMethod));
+                        Causality.registerEdge(logicalCallerFact, Facts.MethodImplementationInvoked.create(targetMethod));
                         invokeFlow = bb.analysisPolicy().createStaticInvokeTypeFlow(invokeLocation, receiverType, targetMethod, actualParameters, actualReturn, multiMethodKey);
                         break;
                     case Special:
-                        Causality.registerEdge(logicalCallerEvent, Facts.MethodImplementationInvoked.create(targetMethod));
+                        Causality.registerEdge(logicalCallerFact, Facts.MethodImplementationInvoked.create(targetMethod));
                         invokeFlow = bb.analysisPolicy().createSpecialInvokeTypeFlow(invokeLocation, receiverType, targetMethod, actualParameters, actualReturn, multiMethodKey);
                         break;
                     case Virtual:

@@ -101,14 +101,14 @@ public abstract class AnalysisElement implements AnnotatedElement {
 
     public void registerReachabilityNotification(ElementNotification notification) {
         ConcurrentLightHashSet.addElement(this, reachableNotificationsUpdater, notification);
-        Fact eventForRegistration = Causality.getCause();
+        Fact registrationCause = Causality.getCause();
         Fact thisReachable = null;
         if (this instanceof AnalysisMethod m) {
             thisReachable = Facts.MethodReachable.create(m);
         } else if (this instanceof AnalysisType t) {
             thisReachable = Facts.TypeReachable.create(t);
         }
-        Causality.registerConjunctiveEdge(eventForRegistration, thisReachable, Facts.ReachabilityNotificationCallback.create(notification.callback));
+        Causality.registerConjunctiveEdge(registrationCause, thisReachable, Facts.ReachabilityNotificationCallback.create(notification.callback));
     }
 
     public void notifyReachabilityCallback(AnalysisUniverse universe, ElementNotification notification) {

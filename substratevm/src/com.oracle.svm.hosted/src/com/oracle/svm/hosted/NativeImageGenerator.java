@@ -1270,9 +1270,9 @@ public class NativeImageGenerator {
         Collection<StructuredGraph> snippetGraphs = replacements.getSnippetGraphs(GraalOptions.TrackNodeSourcePosition.getValue(options), options, objectTransformer);
         if (bb instanceof NativeImagePointsToAnalysis pointsToAnalysis) {
             for (StructuredGraph graph : snippetGraphs) {
-                var snippetRegistrationEvent = Facts.MethodSnippet.create((AnalysisMethod) graph.method());
-                Causality.registerEvent(snippetRegistrationEvent);
-                Causality.registerEdge(snippetRegistrationEvent, Facts.InlinedMethodCode.create((AnalysisMethod) graph.method()));
+                var snippetRegistration = Facts.MethodSnippet.create((AnalysisMethod) graph.method());
+                Causality.registerEvent(snippetRegistration);
+                Causality.registerEdge(snippetRegistration, Facts.InlinedMethodCode.create((AnalysisMethod) graph.method()));
                 MethodTypeFlowBuilder.registerUsedElements(pointsToAnalysis, graph, false);
             }
         } else if (bb instanceof NativeImageReachabilityAnalysisEngine reachabilityAnalysis) {

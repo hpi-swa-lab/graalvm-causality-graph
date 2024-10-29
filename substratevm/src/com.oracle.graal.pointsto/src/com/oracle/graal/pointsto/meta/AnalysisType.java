@@ -679,11 +679,10 @@ public abstract class AnalysisType extends AnalysisElement implements WrappedJav
 
     @SuppressWarnings("try")
     public void registerInstantiatedCallback(Consumer<DuringAnalysisAccess> callback) {
-        Fact eventForRegistration = Causality.getCause();
-        Fact callbackEvent = Facts.ReachabilityNotificationCallback.create(callback);
-        Causality.registerConjunctiveEdge(eventForRegistration, Facts.TypeInstantiated.create(this), callbackEvent);
+        Fact callbackFact = Facts.ReachabilityNotificationCallback.create(callback);
+        Causality.registerConjunctiveEdge(Causality.getCause(), Facts.TypeInstantiated.create(this), callbackFact);
         if (this.isInstantiated()) {
-            try (var ignored = Causality.overwriteCause(callbackEvent)) {
+            try (var ignored = Causality.overwriteCause(callbackFact)) {
                 /* If the type is already instantiated just trigger the callback. */
                 callback.accept(universe.getConcurrentAnalysisAccess());
             }
