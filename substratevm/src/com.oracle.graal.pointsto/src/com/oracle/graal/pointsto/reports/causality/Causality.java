@@ -46,7 +46,6 @@ public final class Causality {
     public enum ActivationLevel {
         DISABLED,
         ENABLED_WITHOUT_TYPEFLOW,
-        ENABLED_SIMPLE,
         ENABLED
     }
 
@@ -67,7 +66,6 @@ public final class Causality {
         private static final CausalityImplementation instance = switch (frozenLevel) {
             case ENABLED -> new TypeflowImpl();
             case ENABLED_WITHOUT_TYPEFLOW -> new RTAImpl();
-            case ENABLED_SIMPLE -> new SimpleGraphImpl();
             case DISABLED -> new CausalityImplementation();
         };
     }
