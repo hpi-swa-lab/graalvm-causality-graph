@@ -26,12 +26,9 @@ package com.oracle.graal.pointsto.reports.causality;
 
 import java.util.ArrayDeque;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashSet;
-import java.util.IdentityHashMap;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
@@ -45,7 +42,6 @@ import com.oracle.graal.pointsto.constraints.UnsupportedFeatureException;
 import com.oracle.graal.pointsto.heap.ImageHeapConstant;
 import com.oracle.graal.pointsto.heap.ImageHeapInstance;
 import com.oracle.graal.pointsto.heap.ImageHeapObjectArray;
-import com.oracle.graal.pointsto.infrastructure.OriginalFieldProvider;
 import com.oracle.graal.pointsto.meta.AnalysisField;
 import com.oracle.graal.pointsto.meta.AnalysisMethod;
 import com.oracle.graal.pointsto.meta.AnalysisType;
@@ -56,7 +52,6 @@ import com.oracle.graal.pointsto.reports.causality.facts.Feature;
 import com.oracle.graal.pointsto.reports.causality.facts.ImmutableStackTrace;
 import com.oracle.graal.pointsto.reports.causality.facts.InlinedMethodCode;
 import com.oracle.graal.pointsto.reports.causality.facts.MethodReachable;
-import com.oracle.graal.pointsto.util.AnalysisError;
 
 import jdk.vm.ci.code.BytecodePosition;
 import jdk.vm.ci.meta.JavaConstant;
@@ -64,7 +59,6 @@ import jdk.vm.ci.meta.JavaConstant;
 abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends CausalityImplementation {
     private final ConcurrentHashMap<Graph.DirectEdge, Boolean> directEdges = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Graph.HyperEdge, Boolean> hyperEdges = new ConcurrentHashMap<>();
-    private final Map<Object, Object> originsOfReplacedObjects = Collections.synchronizedMap(new IdentityHashMap<>());
 
     private final ThreadLocal<TContext> threadContexts;
 
@@ -120,21 +114,13 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
             return causes.peek();
         }
 
-        private void updateHeapTracing(CauseToken top) {
-            Fact cause = top == null || top.level == Causality.HeapTracing.None ? null : top.fact;
-            boolean recordHeapAssignments = top != null && top.level == Causality.HeapTracing.Full;
-            HeapAssignmentTracing.getInstance().setCause(cause, recordHeapAssignments);
-        }
-
         public final class CauseToken implements Causality.NonThrowingAutoCloseable {
             private final Fact fact;
-            private final Causality.HeapTracing level;
             public final StackTraceElement site;
             public final int stackDepth;
 
-            private CauseToken(Fact fact, Causality.HeapTracing level, boolean overwriteSilently) {
+            private CauseToken(Fact fact, boolean overwriteSilently) {
                 this.fact = fact;
-                this.level = level;
 
                 var stackTrace = new Throwable().getStackTrace();
                 int nSkip = getSkipCount(stackTrace);
@@ -149,15 +135,11 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
                 }
 
                 causes.push(this);
-                updateHeapTracing(this);
             }
 
             @Override
             public void close() {
-                if (causes.isEmpty() || causes.pop() != this) {
-                    throw new RuntimeException("Invalid Call to endAccountingRootRegistrationsTo()");
-                }
-                updateHeapTracing(topCauseToken());
+                assert !causes.isEmpty() && causes.pop() == this;
             }
         }
     }
@@ -202,21 +184,8 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
         }
     }
 
-    private static Fact getEventForHeapReason(Object customReason, Object o) {
-        if (customReason == null) {
-            return Facts.UnknownHeapObject.create(o.getClass());
-        } else if (customReason instanceof Fact) {
-            return (Fact) customReason;
-        } else if (customReason instanceof Class<?>) {
-            return Facts.BuildTimeClassInitialization.create((Class<?>) customReason);
-        } else {
-            throw AnalysisError.shouldNotReachHere("Heap Assignment Tracing Reason should not be of type " + customReason.getClass().getTypeName());
-        }
-    }
-
     private static Fact getHeapObjectCreator(Object heapObject) {
-        Object responsible = HeapAssignmentTracing.getInstance().getResponsibleClass(heapObject);
-        return getEventForHeapReason(responsible, heapObject);
+        return Facts.UnknownHeapObject.create(heapObject.getClass());
     }
 
     private static Fact getHeapObjectCreator(BigBang bb, JavaConstant heapObject) {
@@ -252,39 +221,17 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
 
     @Override
     public Fact getHeapFieldAssigner(BigBang bb, JavaConstant receiver, AnalysisField field, JavaConstant value) {
-        Object responsible;
-        Object o;
-
         if (field.isStatic()) {
             if (value instanceof ImageHeapConstant imageHeapConstant && !imageHeapConstant.isBackedByHostedObject()) {
                 return SimulatedHeapTracing.instance.getHeapFieldAssigner(field, imageHeapConstant);
-            } else {
-                o = asObject(bb, Object.class, value);
-                Object original = originsOfReplacedObjects.getOrDefault(o, o);
-                java.lang.reflect.Field f = OriginalFieldProvider.getJavaField(field.unwrapTowardsOriginalField());
-                Class<?> declaringClass = f.getDeclaringClass();
-                responsible = HeapAssignmentTracing.getInstance().getClassResponsibleForStaticFieldWrite(declaringClass, f, original);
             }
         } else {
             if (receiver instanceof ImageHeapInstance imageHeapConstant && !imageHeapConstant.isBackedByHostedObject()) {
                 return SimulatedHeapTracing.instance.getHeapFieldAssigner(imageHeapConstant, field, value);
-            } else {
-                Object receiverO = asObject(bb, Object.class, receiver);
-                receiverO = originsOfReplacedObjects.getOrDefault(receiverO, receiverO);
-                o = asObject(bb, Object.class, value);
-                Object original = originsOfReplacedObjects.getOrDefault(o, o);
-
-                java.lang.reflect.Field f = OriginalFieldProvider.getJavaField(field.unwrapTowardsOriginalField());
-                if (f.getDeclaringClass().isAssignableFrom(receiverO.getClass())) {
-                    responsible = HeapAssignmentTracing.getInstance().getClassResponsibleForNonstaticFieldWrite(receiverO, f, original);
-                } else {
-                    // Field must be substituted or recomputed
-                    responsible = null;
-                }
             }
         }
 
-        return getEventForHeapReason(responsible, o);
+        return getHeapObjectCreator(asObject(bb, Object.class, value));
     }
 
     @Override
@@ -293,16 +240,7 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
         if (array instanceof ImageHeapObjectArray imageHeapArray && !imageHeapArray.isBackedByHostedObject()) {
             return SimulatedHeapTracing.instance.getHeapArrayAssigner(imageHeapArray, elementIndex, value);
         }
-        Object o = asObject(bb, Object.class, value);
-        Object responsible = HeapAssignmentTracing.getInstance().getClassResponsibleForArrayWrite(asObject(bb, Object[].class, array), elementIndex, o);
-        return getEventForHeapReason(responsible, o);
-    }
-
-    @Override
-    protected void registerObjectReplacement(Object source, Object destination) {
-        if (destination != source) {
-            originsOfReplacedObjects.put(destination, source);
-        }
+        return getHeapObjectCreator(asObject(bb, Object.class, value));
     }
 
     @Override
@@ -311,8 +249,8 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
     }
 
     @Override
-    protected Causality.NonThrowingAutoCloseable setCause(Fact fact, Causality.HeapTracing level, boolean overwriteSilently) {
-        return threadContexts.get().new CauseToken(fact, level, overwriteSilently);
+    protected Causality.NonThrowingAutoCloseable setCause(Fact fact, boolean overwriteSilently) {
+        return threadContexts.get().new CauseToken(fact, overwriteSilently);
     }
 
     protected void forEachEvent(Consumer<Fact> callback) {
@@ -397,26 +335,7 @@ abstract class BasicImpl<TContext extends BasicImpl.ThreadContext> extends Causa
 
     private static void addEdgesForBuildTimeClassInitializers(PointsToAnalysis bb, Set<BuildTimeClassInitialization> initialBuildTimeClinits,
                     Set<BuildTimeClassInitialization> buildTimeClinitsWithReason, Graph g) {
-        Set<BuildTimeClassInitialization> visitedBuildTimeClinits = new HashSet<>();
-
-        for (var initialInit : initialBuildTimeClinits) {
-            for (BuildTimeClassInitialization init = initialInit, outerInit; visitedBuildTimeClinits.add(init); init = outerInit) {
-                Object outerInitReason = HeapAssignmentTracing.getInstance().getBuildTimeClinitResponsibleForBuildTimeClinit(init.clazz);
-                if (outerInitReason == null) {
-                    break;
-                }
-                buildTimeClinitsWithReason.add(init);
-                if (outerInitReason instanceof Class<?> outerInitClass) {
-                    outerInit = (BuildTimeClassInitialization) Facts.BuildTimeClassInitialization.create(outerInitClass);
-                    g.add(new Graph.DirectEdge(outerInit, init));
-                } else {
-                    g.add(new Graph.DirectEdge((Fact) outerInitReason, init));
-                    break;
-                }
-            }
-        }
-
-        visitedBuildTimeClinits.stream().sorted(Comparator.comparing(init -> init.clazz.getTypeName())).forEach(init -> {
+        initialBuildTimeClinits.stream().sorted(Comparator.comparing(init -> init.clazz.getTypeName())).forEach(init -> {
             AnalysisType t;
             try {
                 t = bb.getMetaAccess().optionalLookupJavaType(init.clazz).orElse(null);

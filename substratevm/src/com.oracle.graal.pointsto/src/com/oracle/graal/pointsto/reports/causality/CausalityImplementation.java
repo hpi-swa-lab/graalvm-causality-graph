@@ -72,10 +72,7 @@ public class CausalityImplementation {
     protected void registerTypeEntering(PointsToAnalysis bb, Fact cause, TypeFlow<?> destination, AnalysisType type) {
     }
 
-    protected void registerObjectReplacement(Object source, Object destination) {
-    }
-
-    protected Causality.NonThrowingAutoCloseable setCause(Fact fact, Causality.HeapTracing level, boolean overwriteSilently) {
+    protected Causality.NonThrowingAutoCloseable setCause(Fact fact, boolean overwriteSilently) {
         return null;
     }
 

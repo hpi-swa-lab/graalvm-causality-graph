@@ -83,12 +83,6 @@ public final class Causality {
         return InitializationOnDemandHolder.instance;
     }
 
-    public enum HeapTracing {
-        None,
-        Allocations,
-        Full
-    }
-
     public static void addVirtualInvokeTypeFlow(AbstractVirtualInvokeTypeFlow invocation) {
         get().addVirtualInvokeTypeFlow(invocation);
     }
@@ -137,24 +131,12 @@ public final class Causality {
         get().registerTypeEntering(bb, cause, destination, type);
     }
 
-    public static void registerObjectReplacement(Object source, Object destination) {
-        get().registerObjectReplacement(source, destination);
-    }
-
-    public static NonThrowingAutoCloseable setCause(Fact fact, HeapTracing level) {
-        return get().setCause(fact, level, false);
-    }
-
     public static NonThrowingAutoCloseable setCause(Fact fact) {
-        return setCause(fact, HeapTracing.None);
+        return get().setCause(fact, false);
     }
 
     public static NonThrowingAutoCloseable overwriteCause(Fact fact) {
-        return get().setCause(fact, HeapTracing.None, true);
-    }
-
-    public static NonThrowingAutoCloseable overwriteCause(Fact fact, HeapTracing level) {
-        return get().setCause(fact, level, true);
+        return get().setCause(fact, true);
     }
 
     public static NonThrowingAutoCloseable pushCause(Fact fact) {

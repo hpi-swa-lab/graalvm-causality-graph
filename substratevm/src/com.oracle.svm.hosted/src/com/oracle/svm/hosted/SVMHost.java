@@ -47,8 +47,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BiPredicate;
 import java.util.function.Function;
 
-import com.oracle.graal.pointsto.reports.causality.Causality;
-import com.oracle.graal.pointsto.reports.causality.facts.Facts;
 import org.graalvm.nativeimage.AnnotationAccess;
 import org.graalvm.nativeimage.ImageSingletons;
 import org.graalvm.nativeimage.Platform;
@@ -460,7 +458,6 @@ public class SVMHost extends HostVM {
         return hubToType.get(hub);
     }
 
-    @SuppressWarnings("try")
     private DynamicHub createHub(AnalysisType type) {
         DynamicHub superHub = null;
         if ((type.isInstanceClass() && type.getSuperclass() != null) || type.isArray()) {
@@ -513,11 +510,9 @@ public class SVMHost extends HostVM {
          */
         boolean isProxyClass = Proxy.isProxyClass(javaClass);
 
-        try (var ignored = Causality.overwriteCause(Facts.TypeReachable.create(type), Causality.HeapTracing.Full)) {
-            return new DynamicHub(javaClass, className, computeHubType(type), computeReferenceType(type), superHub, componentHub, sourceFileName, modifiers, hubClassLoader,
-                            isHidden, isRecord, nestHost, assertionStatus, type.hasDefaultMethods(), type.declaresDefaultMethods(), isSealed, isVMInternal, isLambdaFormHidden, isLinked, simpleBinaryName,
-                            getDeclaringClass(javaClass), getSignature(javaClass), isProxyClass, layerId);
-        }
+        return new DynamicHub(javaClass, className, computeHubType(type), computeReferenceType(type), superHub, componentHub, sourceFileName, modifiers, hubClassLoader,
+                        isHidden, isRecord, nestHost, assertionStatus, type.hasDefaultMethods(), type.declaresDefaultMethods(), isSealed, isVMInternal, isLambdaFormHidden, isLinked, simpleBinaryName,
+                        getDeclaringClass(javaClass), getSignature(javaClass), isProxyClass, layerId);
     }
 
     private static final Method getSignature = ReflectionUtil.lookupMethod(Class.class, "getGenericSignature0");

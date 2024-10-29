@@ -684,7 +684,6 @@ public class AnalysisUniverse implements Universe {
         for (Function<Object, Object> replacer : objectReplacers) {
             destination = replacer.apply(destination);
         }
-        Causality.registerObjectReplacement(source, destination);
 
         ImageHeapConstant ihc = null;
         for (Function<Object, ImageHeapConstant> replacer : objectToConstantReplacers) {
