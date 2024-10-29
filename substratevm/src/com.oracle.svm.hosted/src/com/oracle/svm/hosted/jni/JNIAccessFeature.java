@@ -763,12 +763,4 @@ public class JNIAccessFeature implements Feature {
     private static String nullErrorMessage(String kind) {
         return "Cannot register null value as " + kind + " for JNI access. Please ensure that all values you register are not null.";
     }
-
-    public ResolvedJavaMethod[] getRegisteredMethods() {
-        return calledJavaMethods.stream().map(cjm -> cjm.targetMethod).toArray(ResolvedJavaMethod[]::new);
-    }
-
-    public Class<?>[] getRegisteredClasses() {
-        return StreamSupport.stream(JNIReflectionDictionary.singleton().getClasses().spliterator(), false).map(JNIAccessibleClass::getClassObject).toArray(Class<?>[]::new);
-    }
 }
