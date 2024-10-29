@@ -344,7 +344,7 @@ public abstract class PointsToAnalysis extends AbstractAnalysisEngine {
         int paramCount = aMethod.getSignature().getParameterCount(!isStatic);
         PointsToAnalysisMethod originalPTAMethod = assertPointsToAnalysisMethod(aMethod);
 
-        Causality.registerEvent(Facts.RootMethodRegistration.create(aMethod));
+        Causality.registerConsequence(Facts.RootMethodRegistration.create(aMethod));
         if (isStatic) {
             /*
              * For static methods trigger analysis in the empty context. This will trigger parsing
@@ -352,7 +352,7 @@ public abstract class PointsToAnalysis extends AbstractAnalysisEngine {
              * initialized with the corresponding parameter declared type.
              */
             Consumer<PointsToAnalysisMethod> triggerStaticMethodFlow = (pointsToMethod) -> {
-                Causality.registerEvent(Facts.MethodImplementationInvoked.create(pointsToMethod));
+                Causality.registerConsequence(Facts.MethodImplementationInvoked.create(pointsToMethod));
                 postTask(() -> {
                     pointsToMethod.registerAsDirectRootMethod(reason);
                     pointsToMethod.registerAsImplementationInvoked(reason.toString());
@@ -396,7 +396,7 @@ public abstract class PointsToAnalysis extends AbstractAnalysisEngine {
              * will be done during callee resolution.
              */
             if (invokeSpecial) {
-                Causality.registerEvent(Facts.MethodReachable.create(originalPTAMethod));
+                Causality.registerConsequence(Facts.MethodReachable.create(originalPTAMethod));
             }
             postTask(() -> {
                 if (invokeSpecial) {

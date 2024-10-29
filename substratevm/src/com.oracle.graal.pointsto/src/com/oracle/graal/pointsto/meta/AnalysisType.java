@@ -589,7 +589,7 @@ public abstract class AnalysisType extends AnalysisElement implements WrappedJav
     @SuppressWarnings("try")
     public boolean registerAsReachable(Object reason) {
         assert isValidReason(reason) : "Registering a type as reachable needs to provide a valid reason.";
-        Causality.registerEvent(Facts.TypeReachable.create(this));
+        Causality.registerConsequence(Facts.TypeReachable.create(this));
         if (!AtomicUtils.isSet(this, isReachableUpdater)) {
             /* First mark all super types as reachable. */
             try (var ignored = Causality.overwriteCause(Facts.TypeReachable.create(this))) {

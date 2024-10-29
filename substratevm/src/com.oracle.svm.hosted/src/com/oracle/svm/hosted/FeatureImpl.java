@@ -286,7 +286,7 @@ public class FeatureImpl {
             } catch (ClassNotFoundException e) {
                 throw VMError.shouldNotReachHere(e);
             }
-            Causality.registerEvent(Facts.BuildTimeClassInitialization.create(clazz));
+            Causality.registerConsequence(Facts.BuildTimeClassInitialization.create(clazz));
         }
     }
 

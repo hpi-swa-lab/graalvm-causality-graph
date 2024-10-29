@@ -467,7 +467,7 @@ public abstract class AnalysisMethod extends AnalysisElement implements WrappedJ
     public void registerAsIntrinsicMethod(Object reason) {
         assert isValidReason(reason) : "Registering a method as intrinsic needs to provide a valid reason, found: " + reason;
         var invoked = Facts.MethodImplementationInvoked.create(this);
-        Causality.registerEvent(invoked);
+        Causality.registerConsequence(invoked);
         Causality.registerEdge(invoked, Facts.MethodReachable.create(this));
         AtomicUtils.atomicSetAndRun(this, reason, isIntrinsicMethodUpdater, this::onImplementationInvoked);
     }
@@ -511,7 +511,7 @@ public abstract class AnalysisMethod extends AnalysisElement implements WrappedJ
     public void registerAsInlined(Object reason) {
         assert reason instanceof NodeSourcePosition || reason instanceof ResolvedJavaMethod : "Registering a method as inlined needs to provide the inline location as reason, found: " + reason;
         var inlined = Facts.MethodInlined.create(this);
-        Causality.registerEvent(inlined);
+        Causality.registerConsequence(inlined);
         Causality.registerEdge(inlined, Facts.MethodReachable.create(this));
         AtomicUtils.atomicSetAndRun(this, reason, isInlinedUpdater, this::onReachable);
     }

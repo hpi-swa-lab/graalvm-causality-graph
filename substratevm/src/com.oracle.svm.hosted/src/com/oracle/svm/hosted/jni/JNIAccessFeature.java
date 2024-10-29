@@ -42,7 +42,6 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
-import java.util.stream.StreamSupport;
 
 import org.graalvm.collections.EconomicSet;
 import org.graalvm.collections.Equivalence;
@@ -227,7 +226,7 @@ public class JNIAccessFeature implements Feature {
             Objects.requireNonNull(clazz, () -> nullErrorMessage("class"));
             abortIfSealed();
             registerConditionalConfiguration(condition, (cnd) -> {
-                Causality.registerEvent(Facts.JNIRegistration.create(clazz));
+                Causality.registerConsequence(Facts.JNIRegistration.create(clazz));
                 newClasses.add(clazz);
             });
         }
@@ -239,7 +238,7 @@ public class JNIAccessFeature implements Feature {
             if (!queriedOnly) {
                 registerConditionalConfiguration(condition, (cnd) -> {
                     for (Executable m : executables) {
-                        Causality.registerEvent(Facts.JNIRegistration.create(m));
+                        Causality.registerConsequence(Facts.JNIRegistration.create(m));
                     }
                     newMethods.addAll(Arrays.asList(executables));
                 });
@@ -255,7 +254,7 @@ public class JNIAccessFeature implements Feature {
 
         private void registerFields(boolean finalIsWritable, Field[] fields) {
             for (Field field : fields) {
-                Causality.registerEvent(Facts.JNIRegistration.create(field));
+                Causality.registerConsequence(Facts.JNIRegistration.create(field));
                 boolean writable = finalIsWritable || !Modifier.isFinal(field.getModifiers());
                 newFields.put(field, writable);
             }
@@ -493,7 +492,7 @@ public class JNIAccessFeature implements Feature {
     @SuppressWarnings("try")
     private JNIJavaCallVariantWrapperGroup createJavaCallVariantWrappers(DuringAnalysisAccessImpl access, ResolvedSignature<ResolvedJavaType> wrapperSignature, boolean nonVirtual) {
         var map = nonVirtual ? nonvirtualCallVariantWrappers : callVariantWrappers;
-        Causality.registerEvent(Facts.JniCallVariantWrapper.create(wrapperSignature, !nonVirtual));
+        Causality.registerConsequence(Facts.JniCallVariantWrapper.create(wrapperSignature, !nonVirtual));
         return map.computeIfAbsent(wrapperSignature, signature -> {
             try (var ignored = Causality.overwriteCause(Facts.JniCallVariantWrapper.create(wrapperSignature, !nonVirtual))) {
                 MetaAccessProvider originalMetaAccess = access.getUniverse().getOriginalMetaAccess();

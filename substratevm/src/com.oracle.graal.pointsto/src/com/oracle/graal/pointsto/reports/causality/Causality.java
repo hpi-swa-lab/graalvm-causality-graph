@@ -99,8 +99,8 @@ public final class Causality {
         return get().setSaturationHappening();
     }
 
-    public static void registerEvent(Fact fact) {
-        registerEdge(null, fact);
+    public static void registerConsequence(Fact consequence) {
+        registerEdge(null, consequence);
     }
 
     public static void registerEdge(Fact cause, Fact consequence) {
@@ -140,7 +140,7 @@ public final class Causality {
     }
 
     public static NonThrowingAutoCloseable pushCause(Fact fact) {
-        registerEvent(fact);
+        registerConsequence(fact);
         return overwriteCause(fact);
     }
 

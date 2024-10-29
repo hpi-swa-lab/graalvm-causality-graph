@@ -1271,7 +1271,7 @@ public class NativeImageGenerator {
         if (bb instanceof NativeImagePointsToAnalysis pointsToAnalysis) {
             for (StructuredGraph graph : snippetGraphs) {
                 var snippetRegistration = Facts.MethodSnippet.create((AnalysisMethod) graph.method());
-                Causality.registerEvent(snippetRegistration);
+                Causality.registerConsequence(snippetRegistration);
                 Causality.registerEdge(snippetRegistration, Facts.InlinedMethodCode.create((AnalysisMethod) graph.method()));
                 MethodTypeFlowBuilder.registerUsedElements(pointsToAnalysis, graph, false);
             }

@@ -198,7 +198,7 @@ public class ReflectionDataBuilder extends ConditionalConfigurationRegistry impl
             });
         } else {
             var conditionalTask = new ConditionalTask(condition, task);
-            Causality.registerEvent(Facts.DeferredTask.create(conditionalTask));
+            Causality.registerConsequence(Facts.DeferredTask.create(conditionalTask));
             pendingConditionalTasks.add(conditionalTask);
             VMError.guarantee(universe == null, "There shouldn't be a race condition on Feature.duringSetup.");
         }

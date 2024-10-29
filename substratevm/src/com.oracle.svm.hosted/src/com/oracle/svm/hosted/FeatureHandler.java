@@ -218,7 +218,7 @@ public class FeatureHandler {
 
         if (registeredFeatures.contains(baseFeatureClass)) {
             if (ImageSingletons.contains(baseFeatureClass)) {
-                Causality.registerEvent(Facts.Feature.create(ImageSingletons.lookup((Class<Feature>) baseFeatureClass)));
+                Causality.registerConsequence(Facts.Feature.create(ImageSingletons.lookup((Class<Feature>) baseFeatureClass)));
             }
             return;
         }
@@ -267,7 +267,7 @@ public class FeatureHandler {
             }
         }
 
-        Causality.registerEvent(Facts.Feature.create(feature));
+        Causality.registerConsequence(Facts.Feature.create(feature));
         featureInstances.add(feature);
     }
 
