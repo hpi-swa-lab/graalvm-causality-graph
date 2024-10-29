@@ -64,8 +64,8 @@ public final class Causality {
     private static final class InitializationOnDemandHolder {
         private static final ActivationLevel frozenLevel = requestedLevel;
         private static final CausalityImplementation instance = switch (frozenLevel) {
-            case ENABLED -> new TypeflowImpl();
-            case ENABLED_WITHOUT_TYPEFLOW -> new RTAImpl();
+            case ENABLED -> new VTACausalityImplementation();
+            case ENABLED_WITHOUT_TYPEFLOW -> new RTACausalityImplementation();
             case DISABLED -> new CausalityImplementation();
         };
     }

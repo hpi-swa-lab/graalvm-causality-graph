@@ -31,8 +31,8 @@ import com.oracle.graal.pointsto.meta.AnalysisType;
 import com.oracle.graal.pointsto.reports.causality.facts.Fact;
 import com.oracle.graal.pointsto.reports.causality.facts.Facts;
 
-public class RTAImpl extends BasicImpl<BasicImpl.ThreadContext> {
-    public RTAImpl() {
+public class RTACausalityImplementation extends BasicImpl<BasicImpl.ThreadContext> {
+    public RTACausalityImplementation() {
         super(BasicImpl.ThreadContext::new);
     }
 

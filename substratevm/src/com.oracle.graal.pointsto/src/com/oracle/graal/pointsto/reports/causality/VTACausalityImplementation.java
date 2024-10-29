@@ -55,7 +55,7 @@ import jdk.vm.ci.code.BytecodeFrame;
 import jdk.vm.ci.code.BytecodePosition;
 import jdk.vm.ci.meta.ResolvedJavaMethod;
 
-final class TypeflowImpl extends BasicImpl<TypeflowImpl.ThreadContext> {
+final class VTACausalityImplementation extends BasicImpl<VTACausalityImplementation.ThreadContext> {
     private final ConcurrentHashMap<Pair<TypeFlow<?>, TypeFlow<?>>, Boolean> interflows = new ConcurrentHashMap<>();
 
     /**
@@ -83,7 +83,7 @@ final class TypeflowImpl extends BasicImpl<TypeflowImpl.ThreadContext> {
         }
     }
 
-    TypeflowImpl() {
+    VTACausalityImplementation() {
         super(ThreadContext::new);
     }
 
