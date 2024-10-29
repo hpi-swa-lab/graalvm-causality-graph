@@ -58,7 +58,6 @@ import com.oracle.graal.pointsto.infrastructure.Universe;
 import com.oracle.graal.pointsto.infrastructure.WrappedConstantPool;
 import com.oracle.graal.pointsto.infrastructure.WrappedJavaType;
 import com.oracle.graal.pointsto.meta.AnalysisElement.MethodOverrideReachableNotification;
-import com.oracle.graal.pointsto.reports.causality.Causality;
 import com.oracle.graal.pointsto.util.AnalysisError;
 import com.oracle.graal.pointsto.util.ConcurrentLightHashSet;
 
@@ -349,7 +348,6 @@ public class AnalysisUniverse implements Universe {
     }
 
     @Override
-    @SuppressWarnings("try")
     public JavaField lookupAllowUnresolved(JavaField rawField) {
         if (rawField == null) {
             return null;

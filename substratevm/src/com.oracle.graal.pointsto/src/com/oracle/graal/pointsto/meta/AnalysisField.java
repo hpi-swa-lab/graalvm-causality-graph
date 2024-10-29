@@ -221,7 +221,7 @@ public abstract class AnalysisField extends AnalysisElement implements WrappedJa
     @SuppressWarnings("try")
     public boolean registerAsAccessed(Object reason) {
         try (var ignored = Causality.pushCause(Facts.FieldRead.create(this))) {
-            declaringClass.registerAsReachable(this);
+            getDeclaringClass().registerAsReachable(this);
         }
 
         assert isValidReason(reason) : "Registering a field as accessed needs to provide a valid reason.";
@@ -240,7 +240,7 @@ public abstract class AnalysisField extends AnalysisElement implements WrappedJa
     @SuppressWarnings("try")
     public boolean registerAsRead(Object reason) {
         try (var ignored = Causality.pushCause(Facts.FieldRead.create(this))) {
-            declaringClass.registerAsReachable(this);
+            getDeclaringClass().registerAsReachable(this);
         }
 
         assert isValidReason(reason) : "Registering a field as read needs to provide a valid reason.";
@@ -264,7 +264,7 @@ public abstract class AnalysisField extends AnalysisElement implements WrappedJa
     @SuppressWarnings("try")
     public boolean registerAsWritten(Object reason) {
         try (var ignored = Causality.pushCause(Facts.FieldWritten.create(this))) {
-            declaringClass.registerAsReachable(this);
+            getDeclaringClass().registerAsReachable(this);
         }
 
         assert isValidReason(reason) : "Registering a field as written needs to provide a valid reason.";
@@ -284,7 +284,7 @@ public abstract class AnalysisField extends AnalysisElement implements WrappedJa
     @SuppressWarnings("try")
     public void registerAsFolded(Object reason) {
         try (var ignored = Causality.pushCause(Facts.FieldRead.create(this))) {
-            declaringClass.registerAsReachable(this);
+            getDeclaringClass().registerAsReachable(this);
         }
 
         assert isValidReason(reason) : "Registering a field as folded needs to provide a valid reason.";
